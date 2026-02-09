@@ -1,0 +1,1 @@
+"""Amplitude analytics integration module."""

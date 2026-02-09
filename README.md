@@ -268,6 +268,40 @@ Upload response:
 
 ---
 
+### 4. Amplitude Integration (`/amplitude`)
+
+Integration with Amplitude analytics API for exporting event data (web/mobile sources).
+
+**Endpoints:**
+```bash
+GET /amplitude/export?start=YYYYMMDD&end=YYYYMMDD&source=web|mobile
+```
+- `start` — Start date (YYYYMMDD), hours default to 00
+- `end` — End date (YYYYMMDD), hours default to 23
+- `source` — `web` or `mobile` (selects credentials)
+
+**Features:**
+- ✅ Two credential pairs: web and mobile (set in `.env`)
+- ✅ Basic Auth (client_id:secret_key)
+- ✅ Downloads .zip archive with .gz files for each hour
+- ✅ Unpacks, merges, and re-zips as `{year}_week_{week}.zip` with NDJSON inside
+- ✅ Returns ready-to-download archive for the requested week
+
+**Example:**
+```bash
+curl -OJ "http://localhost:8000/amplitude/export?start=20240201&end=20240207&source=web"
+```
+
+**.env config:**
+```env
+AMPLITUDE_WEB_SECRET_KEY="your-web-secret-key"
+AMPLITUDE_WEB_CLIENT_ID="your-web-client-id"
+AMPLITUDE_MOBILE_SECRET_KEY="your-mobile-secret-key"
+AMPLITUDE_MOBILE_CLIENT_ID="your-mobile-client-id"
+```
+
+---
+
 ## API Documentation
 
 Interactive API documentation available at:

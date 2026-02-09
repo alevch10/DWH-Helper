@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Query
 from typing import Optional, List
 import json
 
-router = APIRouter(tags=["dwh"])
+router = APIRouter(tags=["DWH"])
 
 from app.config.settings import settings
 from .storage import storage

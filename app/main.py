@@ -5,6 +5,7 @@ from app.config import settings, configure_logging, get_logger
 from app.dwh_tables_worker.router import router as dwh_router
 from app.appmetrica.router import router as appmetrica_router
 from app.s3.router import router as s3_router
+from app.amplitude.router import router as amplitude_router
 
 
 configure_logging(level=settings.logging.level)
@@ -26,7 +27,7 @@ async def startup_event():
         logger.debug("AppMetrica configured")
 
 
-@app.get("/", tags=["main"])
+@app.get("/", tags=["Main"])
 async def root():
     return {"app": settings.title, "version": settings.version, "status": "running"}
 
@@ -34,3 +35,4 @@ async def root():
 app.include_router(dwh_router, prefix="/dwh")
 app.include_router(appmetrica_router, prefix="/appmetrica")
 app.include_router(s3_router, prefix="")
+app.include_router(amplitude_router, prefix="/amplitude")

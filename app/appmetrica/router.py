@@ -5,7 +5,7 @@ from typing import Any, Optional
 
 from .client import client
 
-router = APIRouter(tags=["appmetrica"])
+router = APIRouter(tags=["AppMetrica"])
 
 
 @router.get("/ping")

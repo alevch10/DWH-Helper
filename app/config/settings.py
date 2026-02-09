@@ -21,11 +21,11 @@ class DWHSettings(BaseModel):
 # =======================
 class AppMetricaSettings(BaseModel):
     """AppMetrica integration settings."""
-    base_url: Optional[str] = None
-    api_key: Optional[str] = None
-    application_id: Optional[int] = None
-    poll_interval_seconds: int = 5
-    poll_timeout_seconds: int = 300
+    base_url: str
+    api_key: str
+    application_id: str
+    poll_interval_seconds: int
+    poll_timeout_seconds: int
 
 
 # =======================
@@ -33,11 +33,11 @@ class AppMetricaSettings(BaseModel):
 # =======================
 class S3Settings(BaseModel):
     """AWS S3 storage settings."""
-    access_key_id: Optional[str] = None
-    secret_access_key: Optional[str] = None
-    region: str = "us-east-1"
-    endpoint_url: Optional[str] = None
-    bucket_name: str = "default-bucket"
+    access_key_id: str
+    secret_access_key: str
+    region: str
+    endpoint_url: str
+    bucket_name: str
 
 
 # =======================
@@ -47,6 +47,17 @@ class LoggingSettings(BaseModel):
     """Logging configuration."""
     level: str = "INFO"
     format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+
+# =======================
+# Amplitude API Settings
+# =======================
+class AmplitudeSettings(BaseModel):
+    """Amplitude API credentials for web and mobile sources."""
+    web_secret_key: str
+    web_client_id: str
+    mobile_secret_key: str
+    mobile_client_id: str
 
 
 # =======================
@@ -60,22 +71,21 @@ class Settings(BaseSettings):
     description: str = "Product analytics data ingestion and DWH integration"
     debug: bool = False
 
-    # Settings blocks
-    dwh: DWHSettings = DWHSettings()
-    appmetrica: AppMetricaSettings = AppMetricaSettings()
-    s3: S3Settings = S3Settings()
-    logging: LoggingSettings = LoggingSettings()
-
     model_config = SettingsConfigDict(
         env_file=".env",
+        env_prefix="",
         env_file_encoding="utf-8",
         env_nested_delimiter="_",
+        env_nested_max_split=1,
         case_sensitive=False,
-        extra="ignore",  # Ignore extra environment variables from old config
+        extra="ignore",
     )
+
+    dwh: DWHSettings
+    appmetrica: AppMetricaSettings
+    s3: S3Settings
+    logging: LoggingSettings
+    amplitude: AmplitudeSettings
 
 
 settings = Settings()
-
-
-__all__ = ["Settings", "settings", "DWHSettings", "AppMetricaSettings", "S3Settings", "LoggingSettings"]
