@@ -3,7 +3,6 @@ name = "dwh-helper"
 version = "0.1.0"
 description = "DWH Helper - product analytics data helper"
 authors = ["Andrey Levchenko <aa.levchenko@severmed.com>"]
-packages = [{include = "app"}]
 package-mode = false
 
 [tool.poetry.dependencies]
