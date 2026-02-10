@@ -14,6 +14,22 @@ logger = logging.getLogger(__name__)
 class S3Client:
     def __init__(self):
         logger.info("Initializing S3 client")
+        # Клиент для операций GET (требует s3v4)
+        self.client_v4 = boto3.client(
+            "s3",
+            aws_access_key_id=settings.s3.access_key_id,
+            aws_secret_access_key=settings.s3.secret_access_key,
+            region_name=settings.s3.region,
+            endpoint_url=settings.s3.endpoint_url,
+            config=Config(
+                signature_version="s3v4",  # Для GET операций
+                s3={
+                    "addressing_style": "path",
+                },
+            ),
+        )
+        
+        # Клиент для остальных операций (POST, PUT, DELETE)
         self.client = boto3.client(
             "s3",
             aws_access_key_id=settings.s3.access_key_id,
@@ -21,13 +37,14 @@ class S3Client:
             region_name=settings.s3.region,
             endpoint_url=settings.s3.endpoint_url,
             config=Config(
-                signature_version="s3",
+                signature_version="s3",  # Для остальных операций
                 s3={
                     "addressing_style": "path",
                     "payload_signing_enabled": False,
                 },
             ),
         )
+        
         self.bucket = settings.s3.bucket_name
         logger.info(f"S3 client initialized for bucket: {self.bucket}")
 
@@ -45,7 +62,7 @@ class S3Client:
         """
         logger.info(f"Listing S3 objects with prefix: {prefix}")
         objects = []
-        paginator = self.client.get_paginator("list_objects_v2")
+        paginator = self.client_v4.get_paginator("list_objects_v2")
         
         for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix):
             if "Contents" in page:
@@ -90,7 +107,7 @@ class S3Client:
             Object data as bytes
         """
         logger.info(f"Downloading S3 object: {key}")
-        response = self.client.get_object(Bucket=self.bucket, Key=key)
+        response = self.client_v4.get_object(Bucket=self.bucket, Key=key)
         data = response["Body"].read()
         logger.info(f"Downloaded {key}, size: {len(data)} bytes")
         return data
@@ -199,7 +216,7 @@ class S3Client:
             True if object exists, False otherwise
         """
         try:
-            self.client.head_object(Bucket=self.bucket, Key=key)
+            self.client_v4.head_object(Bucket=self.bucket, Key=key)
             logger.info(f"Object exists: {key}")
             return True
         except Exception as e:
@@ -217,7 +234,7 @@ class S3Client:
             Size in bytes, or None if object doesn't exist
         """
         try:
-            response = self.client.head_object(Bucket=self.bucket, Key=key)
+            response = self.client_v4.head_object(Bucket=self.bucket, Key=key)
             size = response.get("ContentLength")
             logger.info(f"Object size: {key} = {size} bytes")
             return size
