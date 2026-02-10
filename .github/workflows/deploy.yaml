@@ -14,9 +14,6 @@ env:
   IMAGE_NAME: ${{ github.repository_owner }}/dwh-helper
 
 jobs:
-  # ────────────────────────────────────────────────
-  # 1. Build & Push образа — ТОЛЬКО при создании тега
-  # ────────────────────────────────────────────────
   build-and-push:
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -61,30 +58,18 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-
-
-
-  # ────────────────────────────────────────────────
-  # 2. Deploy на сервер — при push в master И при тегах
-  # ────────────────────────────────────────────────
   deploy:
     runs-on: ubuntu-latest
     environment: production
     needs: build-and-push
 
     steps:
-      - name: Debug - Print host/user values
-        run: |
-          echo "SSH_HOST from vars: '${{ secrets.SSH_HOST }}'"
-          echo "SSH_USER from vars: '${{ secrets.SSH_USER }}'"
-          echo "APP_PATH from vars/secrets: '${{ secrets.APP_PATH }}'"
-          echo "Is host empty? ${{ secrets.SSH_HOST == '' }}"
       - name: Deploy to VPS (using Deploy key)
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
-          debug: true
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd ${{ secrets.APP_PATH }} || { echo "Directory not found"; exit 1; }
 
