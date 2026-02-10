@@ -74,18 +74,18 @@ jobs:
     steps:
       - name: Debug - Print host/user values
         run: |
-          echo "SSH_HOST from vars: '${{ vars.SSH_HOST }}'"
-          echo "SSH_USER from vars: '${{ vars.SSH_USER }}'"
-          echo "APP_PATH from vars/secrets: '${{ secrets.APP_PATH || vars.APP_PATH }}'"
+          echo "SSH_HOST from vars: '${{ secrets.SSH_HOST }}'"
+          echo "SSH_USER from vars: '${{ secrets.SSH_USER }}'"
+          echo "APP_PATH from vars/secrets: '${{ secrets.APP_PATH }}'"
           echo "Is host empty? ${{ vars.SSH_HOST == '' }}"
       - name: Deploy to VPS (using Deploy key)
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ vars.SSH_HOST }}
-          username: ${{ vars.SSH_USER }}
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
           debug: true
           script: |
-            cd ${{ vars.APP_PATH }} || { echo "Directory not found"; exit 1; }
+            cd ${{ secrets.APP_PATH }} || { echo "Directory not found"; exit 1; }
 
             cat > .env << 'EOF'
             TITLE=DWH Helper
