@@ -23,7 +23,6 @@ class DWHSettings(BaseModel):
 class AppMetricaSettings(BaseModel):
     """AppMetrica integration settings."""
     base_url: str
-    api_key: str
     application_id: str
     poll_interval_seconds: int
     poll_timeout_seconds: int
