@@ -2,12 +2,8 @@ name: DWH-Helper CI/CD
 
 on:
   push:
-    branches:
-      - main
     tags:
-      - 'v*'
-
-  workflow_dispatch:
+      - "v*"
 
 env:
   REGISTRY: ghcr.io
@@ -15,7 +11,6 @@ env:
 
 jobs:
   build-and-push:
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -31,11 +26,10 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=latest,enable={{ is_default_branch }}
             type=ref,event=tag
             type=sha,prefix=sha-
 
-      - name: Set up QEMU (multi-arch support)
+      - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
@@ -72,51 +66,73 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             set -e
-            TMP_DIR="/tmp/dwh-deploy-$(date +%s)"
+
+            echo "Logging in to GHCR"
+            echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u ${{ github.repository_owner }} --password-stdin
+
+            TMP_DIR="/tmp/dwh-deploy-${{ github.ref_name }}"
             mkdir -p "$TMP_DIR"
             cd "$TMP_DIR"
-            cat > docker-compose.yml << 'EOF'
+
+            cat > .env <<'END_ENV'
+            TITLE="DWH Helper"
+            VERSION="${{ github.ref_name }}"
+            DESCRIPTION="Product analytics data ingestion and DWH integration"
+
+            DEBUG=${{ vars.DEBUG }}
+            AUTH_READ_ACCESS=${{ vars.AUTH_READ_ACCESS }}
+            AUTH_WRITE_ACCESS=${{ vars.AUTH_WRITE_ACCESS }}
+            LOGGING_LEVEL=${{ vars.LOGGING_LEVEL }}
+
+            DWH_DATABASE_URL="${{ secrets.DWH_DATABASE_URL }}"
+            DWH_MAX_WRITE_BATCH_BYTES=${{ vars.DWH_MAX_WRITE_BATCH_BYTES }}
+            DWH_MAX_ROWS_PER_INSERT=${{ vars.DWH_MAX_ROWS_PER_INSERT }}
+
+            APPMETRICA_BASE_URL="${{ vars.APPMETRICA_BASE_URL }}"
+            APPMETRICA_APPLICATION_ID=${{ vars.APPMETRICA_APPLICATION_ID }}
+            APPMETRICA_POLL_INTERVAL_SECONDS=${{ vars.APPMETRICA_POLL_INTERVAL_SECONDS }}
+            APPMETRICA_POLL_TIMEOUT_SECONDS=${{ vars.APPMETRICA_POLL_TIMEOUT_SECONDS }}
+
+            S3_ACCESS_KEY_ID="${{ vars.S3_ACCESS_KEY_ID }}"
+            S3_SECRET_ACCESS_KEY="${{ secrets.S3_SECRET_ACCESS_KEY }}"
+            S3_REGION="${{ vars.S3_REGION }}"
+            S3_ENDPOINT_URL="${{ vars.S3_ENDPOINT_URL }}"
+            S3_BUCKET_NAME="${{ vars.S3_BUCKET_NAME }}"
+
+            AMPLITUDE_WEB_SECRET_KEY="${{ secrets.AMPLITUDE_WEB_SECRET_KEY }}"
+            AMPLITUDE_WEB_CLIENT_ID="${{ vars.AMPLITUDE_WEB_CLIENT_ID }}"
+            AMPLITUDE_MOBILE_SECRET_KEY="${{ secrets.AMPLITUDE_MOBILE_SECRET_KEY }}"
+            AMPLITUDE_MOBILE_CLIENT_ID="${{ vars.AMPLITUDE_MOBILE_CLIENT_ID }}"
+
+            YANDEX_CLIENT_ID="${{ vars.YANDEX_CLIENT_ID }}"
+            YANDEX_CLIENT_SECRET="${{ secrets.YANDEX_CLIENT_SECRET }}"
+            END_ENV
+
+            cat > docker-compose.yml <<'END_COMPOSE'
+            version: "3.9"
+
             services:
               app:
-                image: ghcr.io/alevch10/dwh-helper:${{ github.ref_name || 'latest' }}
+                image: ghcr.io/alevch10/dwh-helper:${{ github.ref_name }}
                 container_name: dwh-helper
                 restart: unless-stopped
                 ports:
                   - "8000:8000"
-                environment:
-                  TITLE=DWH Helper
-                  VERSION=${{ github.ref_name }}
-                  DESCRIPTION=Product analytics data ingestion and DWH integration
-                  DEBUG=${{ vars.DEBUG }}
-                  AUTH_READ_ACCESS=${{ vars.AUTH_READ_ACCESS }}
-                  AUTH_WRITE_ACCESS=${{ vars.AUTH_WRITE_ACCESS }}
-                  LOGGING_LEVEL=${{ vars.LOGGING_LEVEL }}
-                  DWH_DATABASE_URL=${{ secrets.DWH_DATABASE_URL }}
-                  DWH_MAX_WRITE_BATCH_BYTES=${{ vars.DWH_MAX_WRITE_BATCH_BYTES }}
-                  DWH_MAX_ROWS_PER_INSERT=${{ vars.DWH_MAX_ROWS_PER_INSERT }}
-                  APPMETRICA_BASE_URL=${{ vars.APPMETRICA_BASE_URL }}
-                  APPMETRICA_APPLICATION_ID=${{ vars.APPMETRICA_APPLICATION_ID }}
-                  APPMETRICA_POLL_INTERVAL_SECONDS=${{ vars.APPMETRICA_POLL_INTERVAL_SECONDS }}
-                  APPMETRICA_POLL_TIMEOUT_SECONDS=${{ vars.APPMETRICA_POLL_TIMEOUT_SECONDS }}
-                  S3_ACCESS_KEY_ID=${{ vars.S3_ACCESS_KEY_ID }}
-                  S3_SECRET_ACCESS_KEY=${{ secrets.S3_SECRET_ACCESS_KEY }}
-                  S3_REGION=${{ vars.S3_REGION }}
-                  S3_ENDPOINT_URL=${{ vars.S3_ENDPOINT_URL }}
-                  S3_BUCKET_NAME=${{ vars.S3_BUCKET_NAME }}
-                  AMPLITUDE_WEB_SECRET_KEY=${{ secrets.AMPLITUDE_WEB_SECRET_KEY }}
-                  AMPLITUDE_WEB_CLIENT_ID=${{ vars.AMPLITUDE_WEB_CLIENT_ID }}
-                  AMPLITUDE_MOBILE_SECRET_KEY=${{ secrets.AMPLITUDE_MOBILE_SECRET_KEY }}
-                  AMPLITUDE_MOBILE_CLIENT_ID=${{ vars.AMPLITUDE_MOBILE_CLIENT_ID }}
-                  YANDEX_CLIENT_ID=${{ vars.YANDEX_CLIENT_ID }}
-                  YANDEX_CLIENT_SECRET=${{ secrets.YANDEX_CLIENT_SECRET }}
-              EOF
+                env_file:
+                  - .env
+                healthcheck:
+                  test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+                  interval: 30s
+                  timeout: 5s
+                  retries: 3
+            END_COMPOSE
 
+            docker compose down --remove-orphans || true
             docker compose pull
             docker compose up -d --remove-orphans --force-recreate
 
-            echo "Deployment finished"
             docker compose ps
-            docker compose logs --tail=50
+            echo "Deployment finished"
 
             cd /tmp
             rm -rf "$TMP_DIR"
