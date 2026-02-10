@@ -69,6 +69,7 @@ jobs:
   # ────────────────────────────────────────────────
   deploy:
     runs-on: ubuntu-latest
+    environment: production
     needs: build-and-push
 
     steps:
@@ -77,7 +78,7 @@ jobs:
           echo "SSH_HOST from vars: '${{ secrets.SSH_HOST }}'"
           echo "SSH_USER from vars: '${{ secrets.SSH_USER }}'"
           echo "APP_PATH from vars/secrets: '${{ secrets.APP_PATH }}'"
-          echo "Is host empty? ${{ vars.SSH_HOST == '' }}"
+          echo "Is host empty? ${{ secrets.SSH_HOST == '' }}"
       - name: Deploy to VPS (using Deploy key)
         uses: appleboy/ssh-action@v1.0.3
         with:
