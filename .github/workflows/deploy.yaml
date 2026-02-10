@@ -61,6 +61,9 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+
+
+
   # ────────────────────────────────────────────────
   # 2. Deploy на сервер — при push в master И при тегах
   # ────────────────────────────────────────────────
@@ -69,6 +72,12 @@ jobs:
     needs: build-and-push
 
     steps:
+      - name: Debug - Print host/user values
+        run: |
+          echo "SSH_HOST from vars: '${{ vars.SSH_HOST }}'"
+          echo "SSH_USER from vars: '${{ vars.SSH_USER }}'"
+          echo "APP_PATH from vars/secrets: '${{ secrets.APP_PATH || vars.APP_PATH }}'"
+          echo "Is host empty? ${{ vars.SSH_HOST == '' }}"
       - name: Deploy to VPS (using Deploy key)
         uses: appleboy/ssh-action@v1.0.3
         with:
