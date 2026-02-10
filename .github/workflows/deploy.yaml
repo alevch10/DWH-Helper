@@ -1,62 +1,109 @@
-# .github/workflows/deploy.yaml
-name: Deploy to VPS
+name: Build → Push → Deploy DWH-Helper
 
 on:
   push:
     branches:
       - master
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/dwh-helper
 
 jobs:
-  deploy:
+  build-and-push:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up SSH
-        uses: webfactory/ssh-agent@v0.9.0
+      - name: Docker meta (tags & labels)
+        id: meta
+        uses: docker/metadata-action@v5
         with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{ is_default_branch }}
+            type=ref,event=tag
+            type=sha
 
-      - name: Deploy to server
-        run: |
-          export AMPLITUDE_CLIENT_ID="${{ secrets.AMPLITUDE_CLIENT_ID }}"
-          export AMPLITUDE_SECRET_ID="${{ secrets.AMPLITUDE_SECRET_ID }}"
-          export AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}"
-          export AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}"
-          export AWS_DEFAULT_REGION="${{ secrets.AWS_DEFAULT_REGION }}"
-          export S3_ENDPOINT_URL="${{ secrets.S3_ENDPOINT_URL }}"
-          export S3_BUCKET_NAME="${{ secrets.S3_BUCKET_NAME }}"
-          export DEBUG="${{ secrets.DEBUG }}"
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << EOF
-            set -e
-            mkdir -p "${{ secrets.APP_PATH }}"
-            cd "${{ secrets.APP_PATH }}"
-            if [ ! -d ".git" ]; then
-              git clone git@github.com:alevch10/amplitude_downloader.git .
-            else
-              git fetch origin
-              git reset --hard HEAD
-              git clean -xdf
-              git checkout master
-              git pull origin master
-            fi
-            if ! command -v /root/.local/bin/poetry &>/dev/null; then
-              curl -sSL https://install.python-poetry.org | python3 -
-            fi
-            /root/.local/bin/poetry config virtualenvs.in-project true
-            /root/.local/bin/poetry install --only main
-            /root/.local/bin/poetry lock
-            printf "AMPLITUDE_CLIENT_ID=%s\nAMPLITUDE_SECRET_ID=%s\nAWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\nAWS_DEFAULT_REGION=%s\nS3_ENDPOINT_URL=%s\nS3_BUCKET_NAME=%s\nDEBUG=%s\n" \
-              "$AMPLITUDE_CLIENT_ID" \
-              "$AMPLITUDE_SECRET_ID" \
-              "$AWS_ACCESS_KEY_ID" \
-              "$AWS_SECRET_ACCESS_KEY" \
-              "$AWS_DEFAULT_REGION" \
-              "$S3_ENDPOINT_URL" \
-              "$S3_BUCKET_NAME" \
-              "$DEBUG" > .env
-            sudo systemctl daemon-reload || true
-            sudo systemctl restart fastapi-app || true
-          EOF
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          script: |
+            cd ${{ secrets.APP_PATH }} || exit 1
+
+            # Создаём/обновляем .env (все секреты приходят из GitHub Secrets)
+            cat > .env << 'EOF'
+            TITLE=DWH Helper
+            VERSION=${{ github.ref_name || 'dev' }}
+            DESCRIPTION=Product analytics data ingestion and DWH integration
+            DEBUG=${{ secrets.DEBUG }}
+            AUTH_READ_ACCESS=${{ secrets.AUTH_READ_ACCESS }}
+            AUTH_WRITE_ACCESS=${{ secrets.AUTH_WRITE_ACCESS }}
+            LOGGING_LEVEL=${{ secrets.LOGGING_LEVEL }}
+            DWH_DATABASE_URL=${{ secrets.DWH_DATABASE_URL }}
+            DWH_MAX_WRITE_BATCH_BYTES=${{ secrets.DWH_MAX_WRITE_BATCH_BYTES }}
+            DWH_MAX_ROWS_PER_INSERT=${{ secrets.DWH_MAX_ROWS_PER_INSERT }}
+            APPMETRICA_BASE_URL=${{ secrets.APPMETRICA_BASE_URL }}
+            APPMETRICA_APPLICATION_ID=${{ secrets.APPMETRICA_APPLICATION_ID }}
+            APPMETRICA_POLL_INTERVAL_SECONDS=${{ secrets.APPMETRICA_POLL_INTERVAL_SECONDS }}
+            APPMETRICA_POLL_TIMEOUT_SECONDS=${{ secrets.APPMETRICA_POLL_TIMEOUT_SECONDS }}
+            S3_ACCESS_KEY_ID=${{ secrets.S3_ACCESS_KEY_ID }}
+            S3_SECRET_ACCESS_KEY=${{ secrets.S3_SECRET_ACCESS_KEY }}
+            S3_REGION=${{ secrets.S3_REGION }}
+            S3_ENDPOINT_URL=${{ secrets.S3_ENDPOINT_URL }}
+            S3_BUCKET_NAME=${{ secrets.S3_BUCKET_NAME }}
+            AMPLITUDE_WEB_SECRET_KEY=${{ secrets.AMPLITUDE_WEB_SECRET_KEY }}
+            AMPLITUDE_WEB_CLIENT_ID=${{ secrets.AMPLITUDE_WEB_CLIENT_ID }}
+            AMPLITUDE_MOBILE_SECRET_KEY=${{ secrets.AMPLITUDE_MOBILE_SECRET_KEY }}
+            AMPLITUDE_MOBILE_CLIENT_ID=${{ secrets.AMPLITUDE_MOBILE_CLIENT_ID }}
+            YANDEX_CLIENT_ID=${{ secrets.YANDEX_CLIENT_ID }}
+            YANDEX_CLIENT_SECRET=${{ secrets.YANDEX_CLIENT_SECRET }}
+            EOF
+
+            # Pull свежий образ + перезапуск
+            docker compose pull
+            docker compose up -d --remove-orphans --force-recreate
+
+            echo "Deployment finished. Checking status..."
+            docker compose ps
+            docker compose logs --tail=40

@@ -1,0 +1,16 @@
+services:
+  app:
+    image: ghcr.io/alevch10/dwh-helper:${TAG:-latest}
+    container_name: dwh-helper
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 1s
+      retries: 3
