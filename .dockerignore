@@ -24,3 +24,4 @@ venv/
 .vscode/
 .idea/
 .pytest_cache
+dwh.db
