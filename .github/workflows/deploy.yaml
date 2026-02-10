@@ -72,37 +72,36 @@ jobs:
       - name: Deploy to VPS (using Deploy key)
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
+          host: ${{ vars.SSH_HOST }}
+          username: ${{ vars.SSH_USER }}
           script: |
-            cd ${{ secrets.APP_PATH }} || { echo "Directory not found"; exit 1; }
+            cd ${{ vars.APP_PATH }} || { echo "Directory not found"; exit 1; }
 
-            # Обновляем .env (всегда свежие значения из секретов)
             cat > .env << 'EOF'
             TITLE=DWH Helper
-            VERSION=${{ github.ref_name }}                  # master или v1.2.3
+            VERSION=${{ github.ref_name }}
             DESCRIPTION=Product analytics data ingestion and DWH integration
-            DEBUG=${{ secrets.DEBUG }}
-            AUTH_READ_ACCESS=${{ secrets.AUTH_READ_ACCESS }}
-            AUTH_WRITE_ACCESS=${{ secrets.AUTH_WRITE_ACCESS }}
-            LOGGING_LEVEL=${{ secrets.LOGGING_LEVEL }}
+            DEBUG=${{ vars.DEBUG }}
+            AUTH_READ_ACCESS=${{ vars.AUTH_READ_ACCESS }}
+            AUTH_WRITE_ACCESS=${{ vars.AUTH_WRITE_ACCESS }}
+            LOGGING_LEVEL=${{ vars.LOGGING_LEVEL }}
             DWH_DATABASE_URL=${{ secrets.DWH_DATABASE_URL }}
-            DWH_MAX_WRITE_BATCH_BYTES=${{ secrets.DWH_MAX_WRITE_BATCH_BYTES }}
-            DWH_MAX_ROWS_PER_INSERT=${{ secrets.DWH_MAX_ROWS_PER_INSERT }}
-            APPMETRICA_BASE_URL=${{ secrets.APPMETRICA_BASE_URL }}
-            APPMETRICA_APPLICATION_ID=${{ secrets.APPMETRICA_APPLICATION_ID }}
-            APPMETRICA_POLL_INTERVAL_SECONDS=${{ secrets.APPMETRICA_POLL_INTERVAL_SECONDS }}
-            APPMETRICA_POLL_TIMEOUT_SECONDS=${{ secrets.APPMETRICA_POLL_TIMEOUT_SECONDS }}
-            S3_ACCESS_KEY_ID=${{ secrets.S3_ACCESS_KEY_ID }}
+            DWH_MAX_WRITE_BATCH_BYTES=${{ vars.DWH_MAX_WRITE_BATCH_BYTES }}
+            DWH_MAX_ROWS_PER_INSERT=${{ vars.DWH_MAX_ROWS_PER_INSERT }}
+            APPMETRICA_BASE_URL=${{ vars.APPMETRICA_BASE_URL }}
+            APPMETRICA_APPLICATION_ID=${{ vars.APPMETRICA_APPLICATION_ID }}
+            APPMETRICA_POLL_INTERVAL_SECONDS=${{ vars.APPMETRICA_POLL_INTERVAL_SECONDS }}
+            APPMETRICA_POLL_TIMEOUT_SECONDS=${{ vars.APPMETRICA_POLL_TIMEOUT_SECONDS }}
+            S3_ACCESS_KEY_ID=${{ vars.S3_ACCESS_KEY_ID }}
             S3_SECRET_ACCESS_KEY=${{ secrets.S3_SECRET_ACCESS_KEY }}
-            S3_REGION=${{ secrets.S3_REGION }}
-            S3_ENDPOINT_URL=${{ secrets.S3_ENDPOINT_URL }}
-            S3_BUCKET_NAME=${{ secrets.S3_BUCKET_NAME }}
+            S3_REGION=${{ vars.S3_REGION }}
+            S3_ENDPOINT_URL=${{ vars.S3_ENDPOINT_URL }}
+            S3_BUCKET_NAME=${{ vars.S3_BUCKET_NAME }}
             AMPLITUDE_WEB_SECRET_KEY=${{ secrets.AMPLITUDE_WEB_SECRET_KEY }}
-            AMPLITUDE_WEB_CLIENT_ID=${{ secrets.AMPLITUDE_WEB_CLIENT_ID }}
+            AMPLITUDE_WEB_CLIENT_ID=${{ vars.AMPLITUDE_WEB_CLIENT_ID }}
             AMPLITUDE_MOBILE_SECRET_KEY=${{ secrets.AMPLITUDE_MOBILE_SECRET_KEY }}
-            AMPLITUDE_MOBILE_CLIENT_ID=${{ secrets.AMPLITUDE_MOBILE_CLIENT_ID }}
-            YANDEX_CLIENT_ID=${{ secrets.YANDEX_CLIENT_ID }}
+            AMPLITUDE_MOBILE_CLIENT_ID=${{ vars.AMPLITUDE_MOBILE_CLIENT_ID }}
+            YANDEX_CLIENT_ID=${{ vars.YANDEX_CLIENT_ID }}
             YANDEX_CLIENT_SECRET=${{ secrets.YANDEX_CLIENT_SECRET }}
             EOF
 
