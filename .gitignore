@@ -1,5 +1,5 @@
 # Byte-compiled / optimized / DLL files
-ai_docs
+ai_docs/
 __pycache__/
 *.py[cod]
 *$py.class
