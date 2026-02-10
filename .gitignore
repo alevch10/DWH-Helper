@@ -1,5 +1,8 @@
 # Byte-compiled / optimized / DLL files
 ai_docs/
+.github/
+.github-ci.yml
+.dockerignore
 __pycache__/
 *.py[cod]
 *$py.class
@@ -18,6 +21,9 @@ venv/
 
 # Environment
 .env
+.env.example
+Dockerfile
+README.md
 
 
 # Editor directories and files
