@@ -1,5 +1,6 @@
+from typing import List
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 
 
@@ -60,6 +61,8 @@ class AmplitudeSettings(BaseModel):
     mobile_client_id: str
 
 
+
+
 # =======================
 # Main Settings
 # =======================
@@ -81,11 +84,32 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+
     dwh: DWHSettings
     appmetrica: AppMetricaSettings
     s3: S3Settings
     logging: LoggingSettings
     amplitude: AmplitudeSettings
+    read_access: str = Field(default="", validation_alias="AUTH_READ_ACCESS")
+    write_access: str = Field(default="", validation_alias="AUTH_WRITE_ACCESS")
+
+    @field_validator('read_access', 'write_access', mode='after')
+    @classmethod
+    def parse_access_lists(cls, v):
+        """Ensure read_access and write_access are strings (will parse on access)."""
+        return v if isinstance(v, str) else ""
+    
+    def get_read_access_list(self) -> list[str]:
+        """Get read_access as list of strings."""
+        if not self.read_access:
+            return []
+        return [x.strip() for x in self.read_access.split(',') if x.strip()]
+    
+    def get_write_access_list(self) -> list[str]:
+        """Get write_access as list of strings."""
+        if not self.write_access:
+            return []
+        return [x.strip() for x in self.write_access.split(',') if x.strip()]
 
 
 settings = Settings()

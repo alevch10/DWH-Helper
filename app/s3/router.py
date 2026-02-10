@@ -1,7 +1,8 @@
 """FastAPI router for S3 storage operations."""
 
 import logging
-from fastapi import APIRouter, HTTPException, Query, UploadFile, File
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Depends
+from app.auth.deps import require_read, require_write
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 
@@ -49,7 +50,7 @@ class S3DeleteResponse(BaseModel):
 # GET Endpoints
 # =======================
 @router.get("/objects", response_model=S3ObjectList)
-async def list_objects(prefix: str = Query("", description="S3 prefix/folder path")):
+async def list_objects(prefix: str = Query("", description="S3 prefix/folder path"), user=Depends(require_read)):
     """
     List objects in S3 with optional prefix.
     
@@ -68,7 +69,7 @@ async def list_objects(prefix: str = Query("", description="S3 prefix/folder pat
 
 
 @router.get("/object-info", response_model=S3ObjectInfo)
-async def get_object_info(key: str = Query(..., description="S3 object key")):
+async def get_object_info(key: str = Query(..., description="S3 object key"), user=Depends(require_read)):
     """Get information about an S3 object (size, existence)."""
     try:
         exists = s3_client.object_exists(key)
@@ -84,7 +85,7 @@ async def get_object_info(key: str = Query(..., description="S3 object key")):
 
 
 @router.get("/download")
-async def download_object(key: str = Query(..., description="S3 object key")):
+async def download_object(key: str = Query(..., description="S3 object key"), user=Depends(require_read)):
     """
     Download object from S3.
     
@@ -114,6 +115,7 @@ async def download_object(key: str = Query(..., description="S3 object key")):
 async def upload_object(
     key: str = Query(..., description="S3 object key"),
     file: UploadFile = File(..., description="File to upload"),
+    user=Depends(require_write),
 ):
     """
     Upload file to S3.
@@ -139,7 +141,7 @@ async def upload_object(
 
 
 @router.post("/upload-binary")
-async def upload_binary(key: str = Query(..., description="S3 object key")):
+async def upload_binary(key: str = Query(..., description="S3 object key"), user=Depends(require_write)):
     """
     Upload binary data to S3 from request body.
     
@@ -164,6 +166,7 @@ async def upload_binary(key: str = Query(..., description="S3 object key")):
 async def update_object(
     key: str = Query(..., description="S3 object key"),
     file: UploadFile = File(..., description="File content"),
+    user=Depends(require_write),
 ):
     """
     Update existing object in S3 (PUT).
@@ -200,6 +203,7 @@ async def patch_object(
     key: str = Query(..., description="S3 object key"),
     file: UploadFile = File(..., description="Data to patch"),
     offset: int = Query(0, description="Offset position"),
+    user=Depends(require_write),
 ):
     """
     Patch (partial update) object in S3.
@@ -236,7 +240,7 @@ async def patch_object(
 # DELETE Endpoints
 # =======================
 @router.delete("/delete", response_model=S3DeleteResponse)
-async def delete_object(key: str = Query(..., description="S3 object key")):
+async def delete_object(key: str = Query(..., description="S3 object key"), user=Depends(require_write)):
     """
     Delete object from S3.
     

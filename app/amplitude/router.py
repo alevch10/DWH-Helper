@@ -6,7 +6,8 @@ import gzip
 import tempfile
 import shutil
 import os
-from fastapi import APIRouter, Query, HTTPException, Response, BackgroundTasks
+from fastapi import APIRouter, Query, HTTPException, Response, BackgroundTasks, Depends
+from app.auth.deps import require_read
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Literal
@@ -29,6 +30,7 @@ async def amplitude_export(
     end: str = Query(..., description="Дата конца (YYYYMMDD)", example="20240207"),
     source: Literal["web", "mobile"] = Query("web", description="Источник: web или mobile"),
     background_tasks: BackgroundTasks = None,
+    user=Depends(require_read),
 ):
     """
     Экспорт данных из Amplitude за указанный диапазон дат (zip архив с .gz файлами внутри).

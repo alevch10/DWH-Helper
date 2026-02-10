@@ -1,5 +1,6 @@
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
+from app.auth.deps import require_read
 from pydantic import BaseModel, Field
 from typing import Any, Optional
 
@@ -9,7 +10,7 @@ router = APIRouter(tags=["AppMetrica"])
 
 
 @router.get("/ping")
-async def ping():
+async def ping(user=Depends(require_read)):
     return {"module": "appmetrica", "status": "ok"}
 
 
@@ -22,6 +23,7 @@ async def export_events(
     date_dimension: str = Query("default", description="Date dimension"),
     use_utf8_bom: bool = Query(True, description="Use UTF-8 BOM"),
     fields: Optional[str] = Query(None, description="Comma-separated field list"),
+    user=Depends(require_read)
 ):
     """Request AppMetrica export. Date format: `YYYY-MM-DD HH:MM:SS`.
 

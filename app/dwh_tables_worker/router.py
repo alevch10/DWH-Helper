@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
+from app.auth.deps import require_read, require_write
 from typing import Optional, List
 import json
 
@@ -131,7 +132,7 @@ def _insert_batch_data(table_name: str, data: List, schema_class, pk_field: str 
 
 
 @router.post("/events-part", response_model=BatchInsertResponse)
-async def insert_events(request: EventsPartBatch):
+async def insert_events(request: EventsPartBatch, user=Depends(require_write)):
     """Insert batch of events into events_part table."""
     if not request.data:
         raise HTTPException(status_code=400, detail="data array cannot be empty")
@@ -157,6 +158,7 @@ async def get_events(
     limit: Optional[int] = Query(None, description="Max rows to return"),
     sort_by: Optional[str] = Query(None, description="Sort field"),
     sort_dir: str = Query("asc", description="Sort direction"),
+    user=Depends(require_read)
 ):
     """Get events from events_part table."""
     if sort_dir.lower() not in ("asc", "desc"):
@@ -172,7 +174,7 @@ async def get_events(
 
 
 @router.post("/mobile-devices", response_model=BatchInsertResponse)
-async def insert_devices(request: MobileDevicesBatch):
+async def insert_devices(request: MobileDevicesBatch, user=Depends(require_write)):
     """Insert batch of devices into mobile_devices table."""
     if not request.data:
         raise HTTPException(status_code=400, detail="data array cannot be empty")
@@ -198,6 +200,7 @@ async def get_devices(
     limit: Optional[int] = Query(None, description="Max rows to return"),
     sort_by: Optional[str] = Query(None, description="Sort field"),
     sort_dir: str = Query("asc", description="Sort direction"),
+    user=Depends(require_read)
 ):
     """Get devices from mobile_devices table."""
     if sort_dir.lower() not in ("asc", "desc"):
@@ -213,7 +216,7 @@ async def get_devices(
 
 
 @router.post("/permanent-user-properties", response_model=BatchInsertResponse)
-async def insert_user_properties(request: PermanentUserPropertiesBatch):
+async def insert_user_properties(request: PermanentUserPropertiesBatch, user=Depends(require_write)):
     """Insert batch of records into permanent_user_properties table."""
     if not request.data:
         raise HTTPException(status_code=400, detail="data array cannot be empty")
@@ -239,6 +242,7 @@ async def get_user_properties(
     limit: Optional[int] = Query(None, description="Max rows to return"),
     sort_by: Optional[str] = Query(None, description="Sort field"),
     sort_dir: str = Query("asc", description="Sort direction"),
+    user=Depends(require_read)
 ):
     """Get records from permanent_user_properties table."""
     if sort_dir.lower() not in ("asc", "desc"):
@@ -254,7 +258,7 @@ async def get_user_properties(
 
 
 @router.post("/technical-data", response_model=BatchInsertResponse)
-async def insert_technical_data(request: TechnicalDataBatch):
+async def insert_technical_data(request: TechnicalDataBatch, user=Depends(require_write)):
     """Insert batch of records into technical_data table."""
     if not request.data:
         raise HTTPException(status_code=400, detail="data array cannot be empty")
@@ -280,6 +284,7 @@ async def get_technical_data(
     limit: Optional[int] = Query(None, description="Max rows to return"),
     sort_by: Optional[str] = Query(None, description="Sort field"),
     sort_dir: str = Query("asc", description="Sort direction"),
+    user=Depends(require_read)
 ):
     """Get records from technical_data table."""
     if sort_dir.lower() not in ("asc", "desc"):
@@ -295,7 +300,7 @@ async def get_technical_data(
 
 
 @router.post("/event-properties", response_model=BatchInsertResponse)
-async def insert_event_properties(request: TmpEventPropertiesBatch):
+async def insert_event_properties(request: TmpEventPropertiesBatch, user=Depends(require_write)):
     """Insert batch of records into tmp_event_properties table."""
     if not request.data:
         raise HTTPException(status_code=400, detail="data array cannot be empty")
@@ -321,6 +326,7 @@ async def get_event_properties(
     limit: Optional[int] = Query(None, description="Max rows to return"),
     sort_by: Optional[str] = Query(None, description="Sort field"),
     sort_dir: str = Query("asc", description="Sort direction"),
+    user=Depends(require_read)
 ):
     """Get records from tmp_event_properties table."""
     if sort_dir.lower() not in ("asc", "desc"):
@@ -336,7 +342,7 @@ async def get_event_properties(
 
 
 @router.post("/user-properties", response_model=BatchInsertResponse)
-async def insert_user_properties_batch(request: TmpUserPropertiesBatch):
+async def insert_user_properties_batch(request: TmpUserPropertiesBatch, user=Depends(require_write)):
     """Insert batch of records into tmp_user_properties table."""
     if not request.data:
         raise HTTPException(status_code=400, detail="data array cannot be empty")
@@ -362,6 +368,7 @@ async def get_user_properties_tmp(
     limit: Optional[int] = Query(None, description="Max rows to return"),
     sort_by: Optional[str] = Query(None, description="Sort field"),
     sort_dir: str = Query("asc", description="Sort direction"),
+    user=Depends(require_read)
 ):
     """Get records from tmp_user_properties table."""
     if sort_dir.lower() not in ("asc", "desc"):
@@ -377,7 +384,7 @@ async def get_user_properties_tmp(
 
 
 @router.post("/user-locations", response_model=BatchInsertResponse)
-async def insert_user_locations(request: UserLocationsBatch):
+async def insert_user_locations(request: UserLocationsBatch, user=Depends(require_write)):
     """Insert batch of records into user_locations table."""
     if not request.data:
         raise HTTPException(status_code=400, detail="data array cannot be empty")
@@ -403,6 +410,7 @@ async def get_user_locations(
     limit: Optional[int] = Query(None, description="Max rows to return"),
     sort_by: Optional[str] = Query(None, description="Sort field"),
     sort_dir: str = Query("asc", description="Sort direction"),
+    user=Depends(require_read)
 ):
     """Get records from user_locations table."""
     if sort_dir.lower() not in ("asc", "desc"):

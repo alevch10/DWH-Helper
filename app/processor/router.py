@@ -1,6 +1,7 @@
 """Processor API router: export Amplitude data to S3 by weeks."""
 
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException, Depends
+from app.auth.deps import require_write
 from pydantic import BaseModel, Field
 from typing import List, Literal
 from datetime import datetime, timedelta
@@ -24,7 +25,7 @@ class ExportResult(BaseModel):
     s3_files: List[str] = Field(..., description="Список путей файлов, загруженных в S3")
 
 @router.post("/amplitude-to-s3", response_model=ExportResult, summary="Экспортировать данные Amplitude в S3 по неделям")
-async def amplitude_to_s3_export(request: ExportRequest):
+async def amplitude_to_s3_export(request: ExportRequest, user=Depends(require_write)):
     """
     Экспортировать данные Amplitude за указанный диапазон дат по неделям и загрузить архивы в S3.
     """
