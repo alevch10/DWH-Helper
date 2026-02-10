@@ -30,6 +30,15 @@ class AppMetricaSettings(BaseModel):
 
 
 # =======================
+# Yandex OAuth Settings
+# =======================
+class YandexOAuthSettings(BaseModel):
+    """Yandex OAuth settings for user authentication."""
+    client_id: str
+    client_secret: str
+
+
+# =======================
 # S3 Storage Settings
 # =======================
 class S3Settings(BaseModel):
@@ -90,6 +99,7 @@ class Settings(BaseSettings):
     s3: S3Settings
     logging: LoggingSettings
     amplitude: AmplitudeSettings
+    yandex: YandexOAuthSettings
     read_access: str = Field(default="", validation_alias="AUTH_READ_ACCESS")
     write_access: str = Field(default="", validation_alias="AUTH_WRITE_ACCESS")
 

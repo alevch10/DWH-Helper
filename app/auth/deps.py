@@ -3,9 +3,7 @@ import httpx
 import jwt
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer
-from typing import List
 from pydantic import BaseModel
-
 from app.config.settings import settings
 
 oauth2_scheme = HTTPBearer()
@@ -15,34 +13,50 @@ class User(BaseModel):
     access: str  # "read" or "write"
 
 async def get_current_user(request: Request, credentials=Depends(oauth2_scheme)) -> User:
-    token = credentials.credentials
-    # 1. Получить JWT через Yandex API
+    oauth_token = credentials.credentials
+
     async with httpx.AsyncClient() as client:
         resp = await client.get(
-            "https://login.yandex.ru/info?format=jwt",
-            headers={"Authorization": f"OAuth {token}"},
+            "https://login.yandex.ru/info",
+            params={
+                "format": "jwt",
+            },
+            headers={"Authorization": f"OAuth {oauth_token}"},
             timeout=10,
         )
+
         if resp.status_code != 200:
-            raise HTTPException(status_code=401, detail="Invalid OAuth token")
-        jwt_token = resp.text
-    # 2. Декодировать JWT
+            raise HTTPException(status_code=401, detail=f"Yandex error: {resp.text}")
+
+        jwt_token = resp.text.strip()
+
+    # 2. Проверяем подпись и всё остальное
     try:
-        payload = jwt.decode(jwt_token, options={"verify_signature": False})
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid JWT token")
-    # 3. Проверить exp
-    if payload.get("exp", 0) < int(time.time()):
-        raise HTTPException(status_code=401, detail="Token expired")
+        payload = jwt.decode(
+            jwt_token,
+            settings.yandex.client_secret,
+            algorithms=["HS256"],
+            options={
+                "require": ["exp", "iat"],
+                "verify_exp": True,
+            }
+        )
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="JWT expired")
+    except jwt.InvalidSignatureError:
+        raise HTTPException(status_code=401, detail="Invalid JWT signature")
+    except jwt.InvalidTokenError as e:
+        raise HTTPException(status_code=401, detail=f"Invalid JWT: {str(e)}")
+
     login = payload.get("login")
     if not login:
         raise HTTPException(status_code=401, detail="No login in token")
-    # 4. Проверить доступ
-    # Если есть в write_access — полный доступ
+
     if login in settings.get_write_access_list():
         return User(login=login, access="write")
     if login in settings.get_read_access_list():
         return User(login=login, access="read")
+
     raise HTTPException(status_code=403, detail="Access denied")
 
 def require_write(user: User = Depends(get_current_user)):
