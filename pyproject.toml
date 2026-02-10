@@ -6,7 +6,7 @@ authors = ["Andrey Levchenko <aa.levchenko@severmed.com>"]
 package-mode = false
 
 [tool.poetry.dependencies]
-python = ">=3.13.7,<4.0"
+python = ">=3.13,<4.0"
 fastapi = "^0.101.0"
 pydantic = "^2.7.0"
 pydantic-settings = "^2.0.0"
