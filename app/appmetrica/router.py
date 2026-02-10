@@ -1,5 +1,5 @@
 
-from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi import Request, APIRouter, HTTPException, Query, Depends
 from app.auth.deps import require_read
 from pydantic import BaseModel, Field
 from typing import Any, Optional
@@ -16,6 +16,7 @@ async def ping(user=Depends(require_read)):
 
 @router.get("/export")
 async def export_events(
+    request: Request,
     application_id: Optional[str] = Query(None, description="AppMetrica application ID (uses config default if not provided)"),
     skip_unavailable_shards: bool = Query(False, description="Skip unavailable shards"),
     date_since: Optional[str] = Query(None, description="Start date (format: YYYY-MM-DD HH:MM:SS)"),
@@ -32,6 +33,9 @@ async def export_events(
     - `date_since` and `date_until`: required to bound export
     - `fields`: comma-separated list; if omitted all standard fields are used
     """
+    auth_header = request.headers.get("Authorization")
+    raw_token = auth_header.removeprefix("Bearer ").strip()
+
     try:
         # provide default fields list if not set
         default_fields = (
@@ -48,6 +52,7 @@ async def export_events(
             date_dimension=date_dimension,
             use_utf8_bom=use_utf8_bom,
             fields=fields_param,
+            api_key=raw_token,
         )
         return result
     except Exception as e:

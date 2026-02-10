@@ -7,22 +7,9 @@ from app.config.settings import settings
 class AppMetricaClient:
     def __init__(self):
         self.base_url = settings.appmetrica.base_url
-        self.api_key = settings.appmetrica.api_key
         self.application_id = settings.appmetrica.application_id
         self.poll_interval = settings.appmetrica.poll_interval_seconds
         self.poll_timeout = settings.appmetrica.poll_timeout_seconds
-
-    async def fetch_metrics(self, counter_id: str, limit: int = 10) -> Any:
-        """Fetch metrics from AppMetrica. If `appmetrica_base_url` not set, returns a simulated response."""
-        if not self.base_url:
-            return {"counter_id": counter_id, "metrics": [f"metric_{i+1}" for i in range(limit)]}
-
-        headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
-        url = f"{self.base_url.rstrip('/')}/counters/{counter_id}/metrics"
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(url, headers=headers, params={"limit": limit})
-            resp.raise_for_status()
-            return resp.json()
 
     async def fetch_export(
         self,
@@ -35,6 +22,7 @@ class AppMetricaClient:
         fields: Optional[str] = None,
         poll_timeout: Optional[int] = None,
         poll_interval: Optional[int] = None,
+        api_key: str = None,
     ) -> dict:
         """Start an export request and poll until ready."""
         # Use config defaults if not provided
@@ -67,7 +55,7 @@ class AppMetricaClient:
         params = {k: v for k, v in params.items() if v is not None}
 
         url = f"{self.base_url.rstrip('/')}/logs/v1/export/events.json"
-        headers = {"Authorization": f"OAuth {self.api_key}"} if self.api_key else {}
+        headers = {"Authorization": f"OAuth {api_key}"} if api_key else {}
 
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.get(url, headers=headers, params=params)

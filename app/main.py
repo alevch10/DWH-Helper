@@ -24,8 +24,6 @@ app = FastAPI(
 async def startup_event():
     logger.info("Starting %s v%s", settings.title, settings.version)
     logger.debug("DWH Database: %s", settings.dwh.database_url)
-    if settings.appmetrica.api_key:
-        logger.debug("AppMetrica configured")
 
 
 @app.get("/", tags=["Main"])
