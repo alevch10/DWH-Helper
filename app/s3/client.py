@@ -12,12 +12,8 @@ logger = logging.getLogger(__name__)
 
 
 class S3Client:
-    """S3 client for managing objects in AWS S3 or S3-compatible storage."""
-
     def __init__(self):
-        """Initialize S3 client with credentials from settings."""
         logger.info("Initializing S3 client")
-        
         self.client = boto3.client(
             "s3",
             aws_access_key_id=settings.s3.access_key_id,
@@ -25,12 +21,11 @@ class S3Client:
             region_name=settings.s3.region,
             endpoint_url=settings.s3.endpoint_url,
             config=Config(
-                signature_version="s3v4",
+                signature_version="s3",
                 s3={
                     "addressing_style": "path",
                     "payload_signing_enabled": False,
                 },
-                # verify=False,  # Uncomment for HTTPS with self-signed cert
             ),
         )
         self.bucket = settings.s3.bucket_name

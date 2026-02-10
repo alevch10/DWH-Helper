@@ -1,0 +1,62 @@
+# .github/workflows/deploy.yaml
+name: Deploy to VPS
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Deploy to server
+        run: |
+          export AMPLITUDE_CLIENT_ID="${{ secrets.AMPLITUDE_CLIENT_ID }}"
+          export AMPLITUDE_SECRET_ID="${{ secrets.AMPLITUDE_SECRET_ID }}"
+          export AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}"
+          export AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}"
+          export AWS_DEFAULT_REGION="${{ secrets.AWS_DEFAULT_REGION }}"
+          export S3_ENDPOINT_URL="${{ secrets.S3_ENDPOINT_URL }}"
+          export S3_BUCKET_NAME="${{ secrets.S3_BUCKET_NAME }}"
+          export DEBUG="${{ secrets.DEBUG }}"
+
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << EOF
+            set -e
+            mkdir -p "${{ secrets.APP_PATH }}"
+            cd "${{ secrets.APP_PATH }}"
+            if [ ! -d ".git" ]; then
+              git clone git@github.com:alevch10/amplitude_downloader.git .
+            else
+              git fetch origin
+              git reset --hard HEAD
+              git clean -xdf
+              git checkout master
+              git pull origin master
+            fi
+            if ! command -v /root/.local/bin/poetry &>/dev/null; then
+              curl -sSL https://install.python-poetry.org | python3 -
+            fi
+            /root/.local/bin/poetry config virtualenvs.in-project true
+            /root/.local/bin/poetry install --only main
+            /root/.local/bin/poetry lock
+            printf "AMPLITUDE_CLIENT_ID=%s\nAMPLITUDE_SECRET_ID=%s\nAWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\nAWS_DEFAULT_REGION=%s\nS3_ENDPOINT_URL=%s\nS3_BUCKET_NAME=%s\nDEBUG=%s\n" \
+              "$AMPLITUDE_CLIENT_ID" \
+              "$AMPLITUDE_SECRET_ID" \
+              "$AWS_ACCESS_KEY_ID" \
+              "$AWS_SECRET_ACCESS_KEY" \
+              "$AWS_DEFAULT_REGION" \
+              "$S3_ENDPOINT_URL" \
+              "$S3_BUCKET_NAME" \
+              "$DEBUG" > .env
+            sudo systemctl daemon-reload || true
+            sudo systemctl restart fastapi-app || true
+          EOF

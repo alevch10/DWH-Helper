@@ -356,3 +356,145 @@ Key points:
 - All settings loaded automatically from `.env` on startup
 - Settings accessible via `from app.config.settings import settings`
 - Extra environment variables ignored gracefully
+
+---
+
+## Запуск локально
+
+1. Установите Poetry и зависимости:
+
+```bash
+pip install poetry
+poetry install
+```
+
+2. Скопируйте и настройте переменные окружения:
+
+```bash
+cp .env.example .env
+# Отредактируйте .env под свои ключи и параметры
+```
+
+3. Запустите сервер:
+
+```bash
+poetry run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+4. Для production:
+
+```bash
+poetry run uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+---
+
+## Docker
+
+1. Соберите образ:
+
+```bash
+docker build -t dwh-helper .
+```
+
+2. Запустите контейнер:
+
+```bash
+docker run --env-file .env -p 8000:8000 dwh-helper
+```
+
+---
+
+## GitLab/GitHub Actions и деплой
+
+- Пример workflow для деплоя: `.github/workflows/deploy.yaml`
+- Секреты и переменные окружения должны обновляться через CI/CD и .env
+- Для production рекомендуется запуск через systemd (см. deploy.md)
+
+---
+
+## Production: запуск через systemd
+
+1. Создайте unit-файл для systemd:
+
+```bash
+sudo nano /etc/systemd/system/fastapi-app.service
+```
+
+2. Пример содержимого:
+
+```
+[Unit]
+Description=FastAPI app for DWH Helper
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/root/code/amplitude_downloader  # путь к проекту
+ExecStart=/usr/bin/env poetry run uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=always
+Environment="PATH=/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+[Install]
+WantedBy=multi-user.target
+```
+
+3. Перезагрузите systemd и запустите сервис:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl start fastapi-app
+sudo systemctl enable fastapi-app
+```
+
+4. Для перезапуска после обновления кода или переменных окружения:
+
+```bash
+sudo systemctl restart fastapi-app
+```
+
+5. Проверить статус:
+
+```bash
+sudo systemctl status fastapi-app
+```
+
+6. Логи приложения:
+
+```bash
+journalctl -u fastapi-app -f
+```
+
+---
+
+## Production: запуск через Docker и systemd
+
+1. На сервере должен быть установлен Docker.
+2. Скопируйте .env в /root/.env (или другой путь, используемый в docker run).
+3. Пример systemd unit-файла для контейнера:
+
+```ini
+[Unit]
+Description=DWH Helper Docker container
+After=docker.service
+Requires=docker.service
+
+[Service]
+Restart=always
+ExecStartPre=-/usr/bin/docker stop dwh-helper
+ExecStartPre=-/usr/bin/docker rm dwh-helper
+ExecStartPre=/usr/bin/docker pull <ВАШ_РЕГИСТРИ_ИМЯ_ОБРАЗА>
+ExecStart=/usr/bin/docker run --name dwh-helper --env-file /root/.env -p 8000:8000 <ВАШ_РЕГИСТРИ_ИМЯ_ОБРАЗА>
+ExecStop=/usr/bin/docker stop dwh-helper
+
+[Install]
+WantedBy=multi-user.target
+```
+
+4. После обновления образа или переменных окружения:
+
+```bash
+sudo systemctl restart fastapi-app
+```
+
+---

@@ -37,7 +37,7 @@ class AmplitudeClient:
         """
         headers = {"Authorization": self._get_auth_header()}
         params = {"start": start, "end": end}
-        async with httpx.AsyncClient(timeout=600) as client:
+        async with httpx.AsyncClient(timeout=2000) as client:
             response = await client.get(self.BASE_URL, headers=headers, params=params)
             response.raise_for_status()
             return response.content

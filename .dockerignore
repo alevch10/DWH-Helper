@@ -1,3 +1,4 @@
+.env
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -23,4 +24,3 @@ venv/
 .vscode/
 .idea/
 .pytest_cache
-dwh.db
