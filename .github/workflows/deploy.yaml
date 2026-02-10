@@ -1,12 +1,12 @@
-name: Build → Push → Deploy DWH-Helper
+name: DWH-Helper CI/CD
 
 on:
   push:
     branches:
-      - master
-  push:
+      - main
     tags:
       - 'v*'
+
   workflow_dispatch:
 
 env:
@@ -14,14 +14,18 @@ env:
   IMAGE_NAME: ${{ github.repository_owner }}/dwh-helper
 
 jobs:
+  # ────────────────────────────────────────────────
+  # 1. Build & Push образа — ТОЛЬКО при создании тега
+  # ────────────────────────────────────────────────
   build-and-push:
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
 
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Docker meta (tags & labels)
@@ -32,15 +36,15 @@ jobs:
           tags: |
             type=raw,value=latest,enable={{ is_default_branch }}
             type=ref,event=tag
-            type=sha
+            type=sha,prefix=sha-
 
-      - name: Set up QEMU
+      - name: Set up QEMU (multi-arch support)
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to GHCR
+      - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -57,24 +61,26 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # ────────────────────────────────────────────────
+  # 2. Deploy на сервер — при push в master И при тегах
+  # ────────────────────────────────────────────────
   deploy:
-    needs: build-and-push
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')
+    needs: build-and-push
 
     steps:
-      - name: Deploy to VPS via SSH
+      - name: Deploy to VPS (using Deploy key)
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           script: |
-            cd ${{ secrets.APP_PATH }} || exit 1
+            cd ${{ secrets.APP_PATH }} || { echo "Directory not found"; exit 1; }
 
-            # Создаём/обновляем .env (все секреты приходят из GitHub Secrets)
+            # Обновляем .env (всегда свежие значения из секретов)
             cat > .env << 'EOF'
             TITLE=DWH Helper
-            VERSION=${{ github.ref_name || 'dev' }}
+            VERSION=${{ github.ref_name }}                  # master или v1.2.3
             DESCRIPTION=Product analytics data ingestion and DWH integration
             DEBUG=${{ secrets.DEBUG }}
             AUTH_READ_ACCESS=${{ secrets.AUTH_READ_ACCESS }}
@@ -100,10 +106,10 @@ jobs:
             YANDEX_CLIENT_SECRET=${{ secrets.YANDEX_CLIENT_SECRET }}
             EOF
 
-            # Pull свежий образ + перезапуск
             docker compose pull
+
             docker compose up -d --remove-orphans --force-recreate
 
-            echo "Deployment finished. Checking status..."
+            echo "Deployment finished"
             docker compose ps
-            docker compose logs --tail=40
+            docker compose logs --tail=50
