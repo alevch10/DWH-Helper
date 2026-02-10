@@ -1,7 +1,6 @@
 services:
   app:
     image: ghcr.io/alevch10/dwh-helper:${TAG:-latest}
-    container_name: dwh-helper
     restart: unless-stopped
     ports:
       - "8000:8000"
