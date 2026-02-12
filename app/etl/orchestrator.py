@@ -1,15 +1,15 @@
-# app/processor/orchestrator.py
 import json
+
 from typing import Dict, List, Optional, Set, Any
 from fastapi import HTTPException
 
-from app.processor.transformer import transform_single_record, SourceType
-from app.dwh_tables_worker.schemas import (
+from app.etl.transformer import transform_single_record, SourceType
+from app.db.schemas import (
     PermanentUserProperties,
     ChangeableUserProperties,
 )
+from app.db.repository import get_repository, DBRepository
 from app.config.logger import get_logger
-from app.dwh_tables_worker.repository import get_repository, DWHRepository
 
 logger = get_logger(__name__)
 
@@ -218,7 +218,7 @@ def process_source(source_type: SourceType, params: Dict[str, Any]) -> Dict[str,
 
 
 def _process_record(
-    repo: DWHRepository,
+    repo: DBRepository,
     permanent: Optional[PermanentUserProperties],
     changeable: Optional[ChangeableUserProperties],
     existing_permanent: Set[int],

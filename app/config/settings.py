@@ -3,18 +3,20 @@ from pydantic import BaseModel, Field, field_validator
 
 
 # =======================
-# DWH (Database) Settings
+# DB (Database) Settings
 # =======================
-class DWHSettings(BaseModel):
+class DBSettings(BaseModel):
     """Data Warehouse settings."""
 
-    database_name: str
-    database_user: str
-    database_password: str
-    database_host: str
-    database_port: int
+    name: str
+    user: str
+    password: str
+    host: str
+    port: int
     max_params_per_query: int
     safety_factor: float
+    minconn: int = 1
+    maxconn: int = 10
 
 
 # =======================
@@ -96,7 +98,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    dwh: DWHSettings
+    db: DBSettings
     appmetrica: AppMetricaSettings
     s3: S3Settings
     logging: LoggingSettings

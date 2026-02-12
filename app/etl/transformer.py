@@ -3,11 +3,11 @@ from uuid import UUID
 from datetime import datetime
 from typing import Optional, Dict, Any, Literal, Tuple, List
 
-from app.dwh_tables_worker.schemas import (
+from app.db.schemas import (
     PermanentUserProperties,
     ChangeableUserProperties,
 )
-from app.processor import MAPPINGS
+from app.etl import MAPPINGS
 from app.config.logger import get_logger
 
 logger = get_logger(__name__)

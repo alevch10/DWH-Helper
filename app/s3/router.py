@@ -9,7 +9,7 @@ from app.s3.client import S3Client
 from app.config.logger import get_logger
 
 logger = get_logger(__name__)
-router = APIRouter(prefix="/s3", tags=["S3"])
+router = APIRouter()
 
 # Initialize S3 client (singleton)
 s3_client = S3Client()

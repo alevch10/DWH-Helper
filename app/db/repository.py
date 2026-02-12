@@ -8,15 +8,15 @@ from psycopg2.extras import register_uuid
 
 from app.config.settings import settings
 from app.config.logger import get_logger
-from app.dwh_tables_worker import schemas
+from app.db import schemas
 
 logger = get_logger(__name__)
 register_uuid()
 
 
-class DWHRepository:
+class DBRepository:
     """
-    Единый репозиторий для работы с PostgreSQL DWH.
+    Единый репозиторий для работы с PostgreSQL.
     Использует пул соединений с autocommit = True.
     """
 
@@ -33,18 +33,18 @@ class DWHRepository:
 
     def __init__(self):
         self.pool = pool.ThreadedConnectionPool(
-            minconn=1,
-            maxconn=10,
-            dbname=settings.dwh.database_name,
-            user=settings.dwh.database_user,
-            password=settings.dwh.database_password,
-            host=settings.dwh.database_host,
-            port=settings.dwh.database_port,
+            minconn=settings.db.minconn,
+            maxconn=settings.db.maxconn,
+            dbname=settings.db.name,
+            user=settings.db.user,
+            password=settings.db.password,
+            host=settings.db.host,
+            port=settings.db.port,
             cursor_factory=extras.RealDictCursor,
         )
         self._column_counts: Dict[str, int] = {}
         self._precompute_column_counts()
-        logger.info(f"DWHRepository initialized. Column counts: {self._column_counts}")
+        logger.info(f"DBRepository initialized. Column counts: {self._column_counts}")
 
     def _precompute_column_counts(self):
         for table_name, model_class in self.TABLE_MODEL_MAP.items():
@@ -60,9 +60,9 @@ class DWHRepository:
         else:
             col_count = self._column_counts[table_name]
 
-        theoretical_max = settings.dwh.max_params_per_query // col_count
-        safe_max = int(theoretical_max * settings.dwh.safety_factor)
-        configured_max = getattr(settings.dwh, "max_rows_per_insert")
+        theoretical_max = settings.db.max_params_per_query // col_count
+        safe_max = int(theoretical_max * settings.db.safety_factor)
+        configured_max = getattr(settings.db, "max_rows_per_insert")
         return min(safe_max, configured_max)
 
     # ---------- Управление соединениями ----------
@@ -332,12 +332,12 @@ class DWHRepository:
 _repository_instance = None
 
 
-def get_repository() -> DWHRepository:
-    """Возвращает глобальный экземпляр DWHRepository (синглтон)."""
+def get_repository() -> DBRepository:
+    """Возвращает глобальный экземпляр DBRepository (синглтон)."""
     global _repository_instance
     if _repository_instance is None:
-        _repository_instance = DWHRepository()
-        logger.info("Created global DWHRepository instance")
+        _repository_instance = DBRepository()
+        logger.info("Created global DBRepository instance")
     return _repository_instance
 
 
@@ -347,4 +347,4 @@ def close_repository():
     if _repository_instance:
         _repository_instance.pool.closeall()
         _repository_instance = None
-        logger.info("Closed DWHRepository connection pool")
+        logger.info("Closed DBRepository connection pool")

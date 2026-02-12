@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Query, Depends
 from app.auth.deps import require_read, require_write
 from app.config.logger import get_logger
 
-from .repository import DWHRepository
+from .repository import DBRepository
 from .schemas import (
     EventsPart,
     MobileDevices,
@@ -35,17 +35,17 @@ from .schemas import (
 )
 
 logger = get_logger(__name__)
-router = APIRouter(tags=["DWH"])
+router = APIRouter()
 
-# --- Dependency: DWH Repository (singleton) ---
-_repo: Optional[DWHRepository] = None
+# --- Dependency: DB Repository (singleton) ---
+_repo: Optional[DBRepository] = None
 
 
-def get_repo() -> DWHRepository:
+def get_repo() -> DBRepository:
     global _repo
     if _repo is None:
-        _repo = DWHRepository()
-        logger.info("DWHRepository initialized")
+        _repo = DBRepository()
+        logger.info("DBRepository initialized")
     return _repo
 
 
@@ -62,7 +62,7 @@ def _models_to_dicts(models: List) -> List[dict]:
 @router.post("/events-part", response_model=BatchInsertResponse)
 async def insert_events(
     request: EventsPartBatch,
-    repo: DWHRepository = Depends(get_repo),
+    repo: DBRepository = Depends(get_repo),
     user=Depends(require_write),
 ):
     """Insert batch of events into events_part table."""
@@ -87,7 +87,7 @@ async def get_events(
     limit: Optional[int] = Query(None, description="Max rows to return"),
     sort_by: Optional[str] = Query(None, description="Sort field"),
     sort_dir: str = Query("asc", description="Sort direction"),
-    repo: DWHRepository = Depends(get_repo),
+    repo: DBRepository = Depends(get_repo),
     user=Depends(require_read),
 ):
     """Get events from events_part table."""
@@ -114,7 +114,7 @@ async def get_events(
 @router.post("/mobile-devices", response_model=BatchInsertResponse)
 async def insert_devices(
     request: MobileDevicesBatch,
-    repo: DWHRepository = Depends(get_repo),
+    repo: DBRepository = Depends(get_repo),
     user=Depends(require_write),
 ):
     """Insert batch of devices into mobile_devices table."""
@@ -139,7 +139,7 @@ async def get_devices(
     limit: Optional[int] = Query(None, description="Max rows to return"),
     sort_by: Optional[str] = Query(None, description="Sort field"),
     sort_dir: str = Query("asc", description="Sort direction"),
-    repo: DWHRepository = Depends(get_repo),
+    repo: DBRepository = Depends(get_repo),
     user=Depends(require_read),
 ):
     """Get devices from mobile_devices table."""
@@ -168,7 +168,7 @@ async def get_devices(
 @router.post("/permanent-user-properties", response_model=BatchInsertResponse)
 async def insert_user_properties(
     request: PermanentUserPropertiesBatch,
-    repo: DWHRepository = Depends(get_repo),
+    repo: DBRepository = Depends(get_repo),
     user=Depends(require_write),
 ):
     """Insert batch of records into permanent_user_properties table."""
@@ -199,7 +199,7 @@ async def get_user_properties(
     limit: Optional[int] = Query(None, description="Max rows to return"),
     sort_by: Optional[str] = Query(None, description="Sort field"),
     sort_dir: str = Query("asc", description="Sort direction"),
-    repo: DWHRepository = Depends(get_repo),
+    repo: DBRepository = Depends(get_repo),
     user=Depends(require_read),
 ):
     """Get records from permanent_user_properties table."""
@@ -228,7 +228,7 @@ async def get_user_properties(
 @router.post("/changeable-user-properties", response_model=BatchInsertResponse)
 async def insert_changeable_user_properties(
     request: ChangeableUserPropertiesBatch,
-    repo: DWHRepository = Depends(get_repo),
+    repo: DBRepository = Depends(get_repo),
     user=Depends(require_write),
 ):
     """
@@ -279,7 +279,7 @@ async def get_changeable_user_properties(
     sort_dir: str = Query(
         "desc", description="Sort direction (default: desc for latest first)"
     ),
-    repo: DWHRepository = Depends(get_repo),
+    repo: DBRepository = Depends(get_repo),
     user=Depends(require_read),
 ):
     """Get records from changeable_user_properties table."""
@@ -316,7 +316,7 @@ async def get_changeable_user_properties(
 @router.post("/technical-data", response_model=BatchInsertResponse)
 async def insert_technical_data(
     request: TechnicalDataBatch,
-    repo: DWHRepository = Depends(get_repo),
+    repo: DBRepository = Depends(get_repo),
     user=Depends(require_write),
 ):
     """Insert batch of records into technical_data table."""
@@ -341,7 +341,7 @@ async def get_technical_data(
     limit: Optional[int] = Query(None, description="Max rows to return"),
     sort_by: Optional[str] = Query(None, description="Sort field"),
     sort_dir: str = Query("asc", description="Sort direction"),
-    repo: DWHRepository = Depends(get_repo),
+    repo: DBRepository = Depends(get_repo),
     user=Depends(require_read),
 ):
     """Get records from technical_data table."""
@@ -370,7 +370,7 @@ async def get_technical_data(
 @router.post("/event-properties", response_model=BatchInsertResponse)
 async def insert_event_properties(
     request: TmpEventPropertiesBatch,
-    repo: DWHRepository = Depends(get_repo),
+    repo: DBRepository = Depends(get_repo),
     user=Depends(require_write),
 ):
     """Insert batch of records into tmp_event_properties table."""
@@ -395,7 +395,7 @@ async def get_event_properties(
     limit: Optional[int] = Query(None, description="Max rows to return"),
     sort_by: Optional[str] = Query(None, description="Sort field"),
     sort_dir: str = Query("asc", description="Sort direction"),
-    repo: DWHRepository = Depends(get_repo),
+    repo: DBRepository = Depends(get_repo),
     user=Depends(require_read),
 ):
     """Get records from tmp_event_properties table."""
@@ -424,7 +424,7 @@ async def get_event_properties(
 @router.post("/user-properties", response_model=BatchInsertResponse)
 async def insert_user_properties_batch(
     request: TmpUserPropertiesBatch,
-    repo: DWHRepository = Depends(get_repo),
+    repo: DBRepository = Depends(get_repo),
     user=Depends(require_write),
 ):
     """Insert batch of records into tmp_user_properties table."""
@@ -450,7 +450,7 @@ async def get_user_properties_tmp(
     sort_by: Optional[str] = Query(None, description="Sort field"),
     sort_dir: str = Query("asc", description="Sort direction"),
     migrated: Optional[bool] = Query(None, description="Filter by migrated flag"),
-    repo: DWHRepository = Depends(get_repo),
+    repo: DBRepository = Depends(get_repo),
     user=Depends(require_read),
 ):
     """Get records from tmp_user_properties table."""
@@ -484,7 +484,7 @@ async def get_user_properties_tmp(
 @router.post("/user-locations", response_model=BatchInsertResponse)
 async def insert_user_locations(
     request: UserLocationsBatch,
-    repo: DWHRepository = Depends(get_repo),
+    repo: DBRepository = Depends(get_repo),
     user=Depends(require_write),
 ):
     """Insert batch of records into user_locations table."""
@@ -509,7 +509,7 @@ async def get_user_locations(
     limit: Optional[int] = Query(None, description="Max rows to return"),
     sort_by: Optional[str] = Query(None, description="Sort field"),
     sort_dir: str = Query("asc", description="Sort direction"),
-    repo: DWHRepository = Depends(get_repo),
+    repo: DBRepository = Depends(get_repo),
     user=Depends(require_read),
 ):
     """Get records from user_locations table."""

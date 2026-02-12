@@ -1,132 +1,144 @@
-# DWH Helper
+# О приложении:
+Python приложение для работы с данными продуктовой аналитики. 
+Цель приложения: собирать данные из разных систем и приводить их в удобный формат для хранения внутри DWH компании. 
 
-FastAPI application for product-analytics data ingestion with DWH integration, AppMetrica support, and S3 storage management.
+Название: DWH Helper
+Описание: Приложение для работы с данными продуктовой аналитики. 
+Версия: 1.0.0
+Создатель: Андрей Левченко aa.levchenko@severmed.com
 
-**Version:** 1.0.0
+## Стек: 
+- Python 3.13
+- FastAPI
+- uvicorn
+- httpx
+- Pydantic
+- psycopg2
+- boto3
 
----
-
-## Structure
+## Структура
 
 ```
 app/
-├── amplitude/
-│   ├── client.py        (Async Amplitude client)
-│   ├── router.py        (FastAPI endpoints)
-│   └── __init__.py
-├── appmetrica/          (AppMetrica API integration)
-│   ├── client.py        (Async AppMetrica client)
-│   ├── router.py        (FastAPI endpoints)
-│   └── __init__.py
-├── auth/                (Authentification module)
-│   ├── deps.py          (Auth dependensy)
-│   └── __init__.py
-├── config/
-│   ├── settings.py      (Pydantic BaseSettings with nested config blocks)
-│   ├── logger.py        (Logging configuration)
-│   └── __init__.py
-│   ├── dwh_tables_worker/
-│   ├── init.py          (экспорт router)
-│   ├── repository.py    (DWHRepository (пул, общие/специфические методы))
-│   ├── router.py        (FastAPI endpoints (POST/GET))
-│   ├── schemas.py       (Pydantic-модели таблиц + валидация)
-├── processor/
-│   ├── __init__.py             # загрузка field_mappings.yaml → MAPPINGS
-│   ├── transformer.py          # transform_single_record + логика маппинга
-│   ├── orchestrator.py         # process_source, _process_record, compare_changeable, ProcessingInterrupted
-│   ├── field_mappings.yaml     # конфиг маппинга (permanent + changeable)
-│   └── router.py               # POST /transform/user-properties
-├── s3/                  (AWS S3 storage operations)
-│   ├── client.py        (Boto3 S3 client)
-│   ├── router.py        (FastAPI endpoints)
-│   └── __init__.py
-└── main.py              (FastAPI app initialization)
+├── amplitude/             # Интеграция с Amplitude API
+│ ├── init.py
+│ ├── client.py            # Асинхронный клиент для выгрузки событий из Amplitude
+│ ├── router.py            # Эндпоинты для экспорта данных Amplitude
+│ ├── export_utils.py      # Собирает данные за временной промежуток в .ndjson
+│ └── init.py
+│
+├── appmetrica/            # Интеграция с AppMetrica API
+│ ├── init.py
+│ ├── client.py            # Асинхронный клиент для AppMetrica
+│ ├── router.py            # Эндпоинты для работы с AppMetrica
+│ └── init.py
+│
+├── auth/                  # Аутентификация и авторизация
+│ ├── init.py
+│ ├── deps.py              # Зависимости FastAPI (require_read, require_write)
+│ ├── schemas.py           # Pydantic-модели для токенов
+│ └── init.py
+│
+├── config/                # Конфигурация приложения
+│ ├── init.py
+│ ├── settings.py          # Pydantic BaseSettings с вложенными блоками (DB, S3, AppMetrica…)
+│ ├── logger.py            # Настройка логирования
+│ └── init.py
+│
+├── db /                   # Работа с таблицами DB (PostgreSQL)
+│ ├── init.py              # Экспорт router
+│ ├── repository.py        # DBRepository – пул соединений, общие и специфические методы
+│ ├── router.py            # FastAPI‑эндпоинты для 8 таблиц (GET/POST)
+│ └── schemas.py           # Pydantic‑модели всех таблиц DB
+│
+├── etl/                   # ETL‑процессор: трансформация и загрузка в DB
+│ ├── init.py              # Загрузка field_mappings.yaml → MAPPINGS
+│ ├── transformer.py       # transform_single_record – преобразование сырых данных в модели DB
+│ ├── schemas.py           # Pydantic-модели для процессора
+│ ├── orchestrator.py      # process_source, _process_record, compare_changeable, ProcessingInterrupted
+│ ├── field_mappings.yaml  # Конфиг маппинга (permanent + changeable)
+│ └── router.py            # POST /transform/user-properties
+│
+├── s3/                    # Операции с S3‑совместимым хранилищем
+│ ├── init.py
+│ ├── client.py            # Boto3 S3‑клиент (upload, download, list, delete, patch)
+│ ├── router.py            # Эндпоинты для работы с объектами S3
+│ └── init.py
+│
+└── main.py                # Точка входа: создание FastAPI, подключение роутеров
 ```
 
----
+## Конфигурация
+Переменные задаются в  `.env`, пример заполнения в `.env.example`
 
-## Installation & Running
+## Модули приложения
 
-### 1. Install dependencies
 
+### Amplitude Integration (`/amplitude`)
+
+Интеграция с сервисом [amplitude](http://app.amplitude.com/):
+- Позволяет выгружать сырые исторические данные. 
+- Отдает данные в формате файла, доступного для скачивания. 
+-- Скачивает данные посуточно, накапливает в единый .ndjson файл и архивирует в .zip для загрузки.
+
+**Endpoints:**
 ```bash
-poetry install
+GET /amplitude/export?start=YYYYMMDD&end=YYYYMMDD&source=web|mobile
 ```
+- `start` — Start date (YYYYMMDD), hours default to 00
+- `end` — End date (YYYYMMDD), hours default to 23
+- `source` — `web` or `mobile` (selects credentials)
 
-### 2. Configure environment
-
-Copy `.env.example` to `.env` and fill in your settings:
-
+**Example:**
 ```bash
-cp .env.example .env
+curl -OJ "http://localhost:8000/amplitude/export?start=20240201&end=20240207&source=web"
 ```
 
-### 3. Start the server
+### AppMetrica Integration (`/appmetrica`)
 
-**Development (with auto-reload):**
+Интеграция с сервисом [appmetrica](https://appmetrica.yandex.ru/):
+- Позволяет выгружать сырые исторические данные. 
+- Отдает данные в формате файла, доступного для скачивания. 
+-- Скачивает данные посуточно, накапливает в единый .json / .csv файл и архивирует в .zip для загрузки.
+
+**Endpoints:**
 ```bash
-poetry run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+GET /appmetrica/ping
+GET /appmetrica/export?skip_unavailable_shards=false&date_since=2026-02-12%2000%3A00%3A00&date_until=2026-02-12%2018%3A00%3A00&date_dimension=default&use_utf8_bom=true
 ```
 
-**Production:**
-```bash
-poetry run uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
+### Auth
 
----
+Сервис аутентификации:
+- Использует OAuth токен Яндекс.ID для проверки личности. 
+-- Токен выписывается по адресу: https://oauth.yandex.ru/authorize?response_type=token&client_id={CLIENT_ID} 
+- Разделяет и проверяет доступы:
+-- require_read - доступ на чтение
+-- require_write - доступ на запись / удаление / редактирование
+- Права выдаются путем прописывания логина в переменные:
+-- AUTH_READ_ACCESS
+-- AUTH_WRITE_ACCESS
 
-## Configuration
+### Config
 
-Settings are loaded from `.env` using Pydantic BaseSettings with nested configuration blocks:
+Пакет для конфигурации приложения:
+- Настройка переменных
+- Настройка логирования
 
-### Application Settings
-```env
-TITLE="DWH Helper"
-VERSION="1.0.0"
-DESCRIPTION="Product analytics data ingestion and DWH integration"
-DEBUG=false
-```
 
-### Database (DWH)
-```env
-# Database (DWH) - PostgreSQL
-DWH_DATABASE_HOST=localhost
-DWH_DATABASE_PORT=5432
-DWH_DATABASE_NAME=dwh
-DWH_DATABASE_USER=postgres
-DWH_DATABASE_PASSWORD=secret
-```
+### DB (`/db`)
 
-### AppMetrica API
-```env
-APPMETRICA_BASE_URL="https://api.appmetrica.yandex.net"
-APPMETRICA_API_KEY="your-api-key"
-APPMETRICA_APPLICATION_ID=123456789
-APPMETRICA_POLL_INTERVAL_SECONDS=5
-APPMETRICA_POLL_TIMEOUT_SECONDS=300
-```
+Модуль для работы с 8 таблицами PostgreSQL:
+Ключевые особенности реализации:
+- PostgreSQL — подключение через psycopg2.pool.ThreadedConnectionPool
+- Единый репозиторий — все общие методы (insert_batch, select) + специфические (get_latest_changeable_for_ehrs, update_migrated_tmp)
+- Динамический расчёт лимита строк — на основе количества колонок в Pydantic-модели и протокольного лимита PostgreSQL (65 535 параметров). Используется SAFETY_FACTOR для запаса.
+- Автоматическое чанкование — разбиение по строкам, никаких проверок по байтам.
+- Возврат ID вставленных записей — через RETURNING (значения приводятся к строке).
+- Реальный подсчёт количества батчей — возвращается в поле batches.
+- Строгая валидация дат — event_time принимает только ISO 8601, невалидные данные вызывают HTTP 422.
+- Поддержка ON CONFLICT — для permanent_user_properties и changeable_user_properties.
 
-### AWS S3 Storage
-```env
-S3_ACCESS_KEY_ID="your-access-key"
-S3_SECRET_ACCESS_KEY="your-secret-key"
-S3_REGION="us-east-1"
-S3_ENDPOINT_URL="https://s3.amazonaws.com"    # Leave empty for AWS, or use custom URL
-S3_BUCKET_NAME="your-bucket-name"
-```
-
-### Logging
-```env
-LOGGING_LEVEL=INFO
-```
-
----
-
-## Modules
-
-### 1. DWH Tables Worker (`/dwh`)
-
-Модуль для работы с 8 таблицами PostgreSQL DWH.
 Обеспечивает **единый репозиторий** с пулом соединений, динамическим расчётом лимитов и строгой валидацией.
 
 **Таблицы:**
@@ -136,19 +148,19 @@ LOGGING_LEVEL=INFO
 - `changeable_user_properties` — изменяемые свойства с историей
 - `technical_data` — техническая информация Amplitude
 - `tmp_event_properties` — свойства событий (JSONB)
-- `tmp_user_properties` — свойства пользователей (JSONB) с флагом `migrated`
+- `tmp_user_properties` — сырые свойства пользователей (JSONB) с флагом `migrated`. 
 - `user_locations` — геолокационные данные
 
 **GET Endpoints** — выборка с фильтрацией и сортировкой:
 ```bash
-GET /dwh/events-part
-GET /dwh/mobile-devices
-GET /dwh/permanent-user-properties
-GET /dwh/changeable-user-properties
-GET /dwh/technical-data
-GET /dwh/event-properties
-GET /dwh/user-properties
-GET /dwh/user-locations
+GET /db/events-part
+GET /db/mobile-devices
+GET /db/permanent-user-properties
+GET /db/changeable-user-properties
+GET /db/technical-data
+GET /db/event-properties
+GET /db/user-properties
+GET /db/user-locations
 ```
 Параметры запроса (все опциональны):
 - pk — фильтр по первичному ключу (uuid, device_id, ehr_id)
@@ -166,14 +178,14 @@ GET /dwh/user-locations
 **POST Endpoints** — пакетная вставка:
 
 ``` bash
-POST /dwh/events-part
-POST /dwh/mobile-devices
-POST /dwh/permanent-user-properties
-POST /dwh/changeable-user-properties
-POST /dwh/technical-data
-POST /dwh/event-properties
-POST /dwh/user-properties
-POST /dwh/user-locations
+POST /db/events-part
+POST /db/mobile-devices
+POST /db/permanent-user-properties
+POST /db/changeable-user-properties
+POST /db/technical-data
+POST /db/event-properties
+POST /db/user-properties
+POST /db/user-locations
 ```
 Тело запроса:
 ``` json
@@ -190,57 +202,20 @@ json
   "batches": 2
 }
 ```
-Ключевые особенности реализации:
-✅ PostgreSQL — подключение через psycopg2.pool.ThreadedConnectionPool
-✅ Единый репозиторий — все общие методы (insert_batch, select) + специфические (get_latest_changeable_for_ehrs, update_migrated_tmp)
-✅ Динамический расчёт лимита строк — на основе количества колонок в Pydantic-модели и протокольного лимита PostgreSQL (65 535 параметров). Используется SAFETY_FACTOR = 0.7.
-✅ Автоматическое чанкование — разбиение по строкам, никаких проверок по байтам.
-✅ Возврат ID вставленных записей — через RETURNING (значения приводятся к строке).
-✅ Реальный подсчёт количества батчей — возвращается в поле batches.
-✅ Строгая валидация дат — event_time принимает только ISO 8601, невалидные данные вызывают HTTP 422.
-✅ Поддержка ON CONFLICT — для permanent_user_properties и changeable_user_properties.
-✅ Специфические методы — get_all_permanent_ehr_ids, get_latest_changeable_for_ehrs, upsert_changeable, update_migrated_tmp.
-✅ Полная обратная совместимость — модули, использовавшие старый DBClass, могут переключиться на DWHRepository.
 
-
----
-
-### 2. AppMetrica Integration (`/appmetrica`)
-
-Async client for AppMetrica API data export.
-
-**Endpoints:**
-```bash
-GET /appmetrica/ping
-GET /appmetrica/fetch-export?export_id=123&poll_interval=5&poll_timeout=300
-```
-
-**Features:**
-- ✅ Async HTTP client with httpx
-- ✅ Configurable polling with interval and timeout
-- ✅ Support for export monitoring
-
----
-
-### 3. S3 Storage (`/s3`)
+### S3 Storage (`/s3`)
 
 AWS S3 and S3-compatible storage operations with full CRUD support.
 
 **GET Endpoints:**
 ```bash
-# List objects with optional prefix
 GET /s3/objects?prefix=folder/
-
-# Get object metadata (size, exists)
 GET /s3/object-info?key=object-key
-
-# Download object
 GET /s3/download?key=object-key
 ```
 
 **POST Endpoints:**
 ```bash
-# Upload file
 POST /s3/upload?key=path/to/file
 Content-Type: multipart/form-data
 Body: [file content]
@@ -248,7 +223,6 @@ Body: [file content]
 
 **PUT Endpoints:**
 ```bash
-# Update existing object
 PUT /s3/update?key=path/to/file
 Content-Type: multipart/form-data
 Body: [file content]
@@ -256,7 +230,6 @@ Body: [file content]
 
 **PATCH Endpoints:**
 ```bash
-# Patch (partial update) object
 PATCH /s3/patch?key=path/to/file&offset=0
 Content-Type: multipart/form-data
 Body: [file content]
@@ -264,7 +237,6 @@ Body: [file content]
 
 **DELETE Endpoints:**
 ```bash
-# Delete object
 DELETE /s3/delete?key=path/to/file
 ```
 
@@ -294,42 +266,6 @@ Upload response:
 }
 ```
 
----
-
-### 4. Amplitude Integration (`/amplitude`)
-
-Integration with Amplitude analytics API for exporting event data (web/mobile sources).
-
-**Endpoints:**
-```bash
-GET /amplitude/export?start=YYYYMMDD&end=YYYYMMDD&source=web|mobile
-```
-- `start` — Start date (YYYYMMDD), hours default to 00
-- `end` — End date (YYYYMMDD), hours default to 23
-- `source` — `web` or `mobile` (selects credentials)
-
-**Features:**
-- ✅ Two credential pairs: web and mobile (set in `.env`)
-- ✅ Basic Auth (client_id:secret_key)
-- ✅ Downloads .zip archive with .gz files for each hour
-- ✅ Unpacks, merges, and re-zips as `{year}_week_{week}.zip` with NDJSON inside
-- ✅ Returns ready-to-download archive for the requested week
-
-**Example:**
-```bash
-curl -OJ "http://localhost:8000/amplitude/export?start=20240201&end=20240207&source=web"
-```
-
-**.env config:**
-```env
-AMPLITUDE_WEB_SECRET_KEY="your-web-secret-key"
-AMPLITUDE_WEB_CLIENT_ID="your-web-client-id"
-AMPLITUDE_MOBILE_SECRET_KEY="your-mobile-secret-key"
-AMPLITUDE_MOBILE_CLIENT_ID="your-mobile-client-id"
-```
-
----
-
 ## API Documentation
 
 Interactive API documentation available at:
@@ -352,177 +288,14 @@ poetry run python -m py_compile app/**/*.py
 poetry run python -c "from app.config.settings import settings; print(settings)"
 ```
 
-### Test batch operations
-```bash
-# Upload batch of 1500 records (will chunk into batches)
-curl -X POST http://localhost:8000/dwh/user-locations \
-  -H "Content-Type: application/json" \
-  -d @large_batch.json
-```
-
----
-
-## Features
-
-✅ **Modular Configuration** - Nested DWHSettings, AppMetricaSettings, LoggingSettings, S3Settings  
-✅ **Batch Operations** - Automatic chunking respects DB write limits and row limits  
-✅ **S3 Integration** - Full CRUD operations with AWS S3 and S3-compatible services  
-✅ **AppMetrica Integration** - Async export polling with configurable timeouts  
-✅ **7 DWH Tables** - Pre-configured schemas for product analytics data  
-✅ **Simplified API** - Clean response format without wrapper objects  
-✅ **Error Handling** - Proper HTTP status codes and error messages  
-✅ **OpenAPI Support** - Full Swagger/ReDoc documentation  
-
----
-
-## Environment Variables Reference
-
-See `.env.example` for all available configuration options.
-
-Key points:
-- Use `env_nested_delimiter="_"` format: `DWH_DATABASE_URL`, `S3_ACCESS_KEY_ID`, etc.
-- All settings loaded automatically from `.env` on startup
-- Settings accessible via `from app.config.settings import settings`
-- Extra environment variables ignored gracefully
-
----
-
-## Запуск локально
+## Запуск 
+### Локально
 
 1. Установите Poetry и зависимости:
 
 ```bash
 pip install poetry
 poetry install
-```
-
-2. Скопируйте и настройте переменные окружения:
-
-```bash
-cp .env.example .env
-# Отредактируйте .env под свои ключи и параметры
-```
-
-3. Запустите сервер:
-
-```bash
+cp .env.example .env # Отредактируйте .env под свои ключи и параметры
 poetry run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
-
-4. Для production:
-
-```bash
-poetry run uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
----
-
-## Docker
-
-1. Соберите образ:
-
-```bash
-docker build -t dwh-helper .
-```
-
-2. Запустите контейнер:
-
-```bash
-docker run --env-file .env -p 8000:8000 dwh-helper
-```
-
----
-
-## GitLab/GitHub Actions и деплой
-
-- Пример workflow для деплоя: `.github/workflows/deploy.yaml`
-- Секреты и переменные окружения должны обновляться через CI/CD и .env
-- Для production рекомендуется запуск через systemd (см. deploy.md)
-
----
-
-## Production: запуск через systemd
-
-1. Создайте unit-файл для systemd:
-
-```bash
-sudo nano /etc/systemd/system/fastapi-app.service
-```
-
-2. Пример содержимого:
-
-```
-[Unit]
-Description=FastAPI app for DWH Helper
-After=network.target
-
-[Service]
-User=root
-WorkingDirectory=/root/code/amplitude_downloader  # путь к проекту
-ExecStart=/usr/bin/env poetry run uvicorn app.main:app --host 0.0.0.0 --port 8000
-Restart=always
-Environment="PATH=/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-
-[Install]
-WantedBy=multi-user.target
-```
-
-3. Перезагрузите systemd и запустите сервис:
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl start fastapi-app
-sudo systemctl enable fastapi-app
-```
-
-4. Для перезапуска после обновления кода или переменных окружения:
-
-```bash
-sudo systemctl restart fastapi-app
-```
-
-5. Проверить статус:
-
-```bash
-sudo systemctl status fastapi-app
-```
-
-6. Логи приложения:
-
-```bash
-journalctl -u fastapi-app -f
-```
-
----
-
-## Production: запуск через Docker и systemd
-
-1. На сервере должен быть установлен Docker.
-2. Скопируйте .env в /root/.env (или другой путь, используемый в docker run).
-3. Пример systemd unit-файла для контейнера:
-
-```ini
-[Unit]
-Description=DWH Helper Docker container
-After=docker.service
-Requires=docker.service
-
-[Service]
-Restart=always
-ExecStartPre=-/usr/bin/docker stop dwh-helper
-ExecStartPre=-/usr/bin/docker rm dwh-helper
-ExecStartPre=/usr/bin/docker pull <ВАШ_РЕГИСТРИ_ИМЯ_ОБРАЗА>
-ExecStart=/usr/bin/docker run --name dwh-helper --env-file /root/.env -p 8000:8000 <ВАШ_РЕГИСТРИ_ИМЯ_ОБРАЗА>
-ExecStop=/usr/bin/docker stop dwh-helper
-
-[Install]
-WantedBy=multi-user.target
-```
-
-4. После обновления образа или переменных окружения:
-
-```bash
-sudo systemctl restart fastapi-app
-```
-
----
