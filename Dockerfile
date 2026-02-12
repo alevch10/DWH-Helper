@@ -17,6 +17,13 @@ RUN curl -sSL https://install.python-poetry.org | python3 - && \
 # Copy only requirements for dependency install
 COPY pyproject.toml poetry.lock ./
 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    python3-dev \
+    libpq-dev \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install dependencies (no dev)
 RUN poetry config virtualenvs.create false \
     && poetry install --no-interaction --no-ansi --no-root 
