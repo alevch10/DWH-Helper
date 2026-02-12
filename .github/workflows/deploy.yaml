@@ -87,8 +87,8 @@ jobs:
             DWH_DATABASE_NAME=${{ vars.DWH_DATABASE_NAME }}
             DWH_DATABASE_USER=${{ vars.DWH_DATABASE_USER }}
             DWH_DATABASE_PASSWORD=${{ secrets.DWH_DATABASE_PASSWORD }}
-            DWH_DATABASE_HOST=${ vars.DWH_DATABASE_HOST }
-            DWH_DATABASE_PORT=${ vars.DWH_DATABASE_PORT }
+            DWH_DATABASE_HOST=${{ vars.DWH_DATABASE_HOST }}
+            DWH_DATABASE_PORT=${{ vars.DWH_DATABASE_PORT }}
             DWH_MAX_PARAMS_PER_QUERY=${{ vars.DWH_MAX_PARAMS_PER_QUERY }}
             DWH_SAFETY_FACTOR=${{ vars.DWH_SAFETY_FACTOR }}
 
