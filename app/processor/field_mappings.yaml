@@ -1,0 +1,90 @@
+# Конфигурация правил трансформации и маппинга полей для загрузки в DWH.
+permanent:
+  - target: gender
+    sources: ["Gender", "gender"]
+    type: string
+    transform: lowercase_first
+  - target: cohort_day
+    sources: ["cohort_day"]
+    type: integer
+  - target: cohort_week
+    sources: ["cohort_week"]
+    type: integer
+  - target: cohort_month
+    sources: ["cohort_month"]
+    type: integer
+  - target: registered_via_app
+    sources: ["registered_via_app"]
+    type: boolean
+    true_values: ["via app", "1", 1]
+    false_values: ["0", 0]
+    null_values: ["unknown", "N/A", null]
+  - target: start_version
+    sources: ["start_version"]
+    type: string
+  - target: source
+    sources: ["source"]
+    type: string
+
+changeable:
+  - target: age
+    sources: ["age", "Age"]
+    type: integer
+    extract_regex: "\\d+"
+    priority: first_non_null
+  - target: app_city
+    sources: ["app_city"]
+    type: string
+    value_map:
+      "SPB": "Санкт-Петербург"
+      "Санкт-Петербург": "Санкт-Петербург"
+      "Moscow": "Москва"
+      "Москва": "Москва"
+  - target: push_permission
+    sources: ["push_permission", "Notifications state"]
+    type: boolean
+    true_values: ["granted", "Enabled", 1, "true", "1"]
+    false_values: ["not_granted", "Disabled", 0, "false", "0"]
+    null_values: ["unknown", "N/A", null]
+  - target: location_permission
+    sources: ["location_permission"]
+    type: boolean
+    true_values: ["granted"]
+    false_values: ["not_granted"]
+    null_values: ["unknown", "N/A", null]
+  - target: authorization_status
+    sources: ["authorization_status", "Authorized"]
+    type: boolean
+    true_values: ["authorized", "true", "1", 1]
+    false_values: ["not_authorized", "unauthorized", "false", "0", 0]
+    null_values: ["unknown", "N/A", null]
+  - target: telemed_files_sent
+    sources: ["telemed_files_sent"]
+    type: integer
+  - target: appointments_cancelled
+    sources: ["appointments_cancelled"]
+    type: integer
+  - target: telemed_files_received
+    sources: ["telemed_files_received"]
+    type: integer
+  - target: telemed_messages_received
+    sources: ["telemed_messages_received"]
+    type: integer
+  - target: telemed_messages_sent
+    sources: ["telemed_messages_sent"]
+    type: integer
+  - target: telemed_consultations_resumed
+    sources: ["telemed_consultations_resumed"]
+    type: integer
+  - target: appointments_booked
+    sources: ["appointments_booked"]
+    type: integer
+  - target: ehr_count
+    sources: ["Ehr Count"]
+    type: integer
+  - target: google_pay_available
+    sources: ["google_pay_available"]
+    type: boolean
+    true_values: ["available", "true", "1", 1]
+    false_values: ["not_available", "not available", "unavailable", "false", "0", 0]
+    null_values: ["unknown", "N/A", null]

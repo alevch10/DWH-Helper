@@ -4,11 +4,16 @@ import httpx
 import base64
 from typing import Literal, Optional
 from app.config.settings import settings
+from app.config.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 class AmplitudeClient:
     """
     Amplitude API client supporting both Web and Mobile credentials.
     """
+
     BASE_URL = "https://amplitude.com/api/2/export"
 
     def __init__(self, source: Literal["web", "mobile"] = "web"):

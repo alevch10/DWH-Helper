@@ -1,7 +1,7 @@
-from pydantic import BaseModel, Field
+from datetime import datetime
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, Dict, Any, List
 from uuid import UUID
-from datetime import datetime
 
 
 # =======================
@@ -10,10 +10,9 @@ from datetime import datetime
 
 
 class EventsPart(BaseModel):
-    """Schema for events_part table - user events with device and session info."""
     uuid: UUID
     event_type: Optional[str] = None
-    event_time: Optional[str] = None  # ISO timestamp
+    event_time: Optional[datetime] = None
     user_id: Optional[int] = None
     platform: Optional[str] = None
     device_id: Optional[str] = None
@@ -25,9 +24,23 @@ class EventsPart(BaseModel):
     start_version: Optional[str] = None
     version_name: Optional[str] = None
 
+    @field_validator("event_time", mode="before")
+    @classmethod
+    def parse_event_time(cls, v):
+        """Строго преобразует строку в datetime. Если формат неверный — ValueError."""
+        if v is None:
+            return v
+        if isinstance(v, datetime):
+            return v
+        try:
+            return datetime.fromisoformat(v.replace("Z", "+00:00"))
+        except (ValueError, TypeError) as e:
+            raise ValueError(
+                f"Invalid datetime format for event_time: '{v}'. Expected ISO 8601."
+            ) from e
+
 
 class MobileDevices(BaseModel):
-    """Schema for mobile_devices table - device metadata."""
     device_id: str
     device_brand: Optional[str] = None
     device_carrier: Optional[str] = None
@@ -38,8 +51,8 @@ class MobileDevices(BaseModel):
 
 
 class PermanentUserProperties(BaseModel):
-    """Schema for permanent_user_properties table - static user properties."""
-    ehr_id: int = Field(..., description="EHR ID - primary key")
+    ehr_id: int
+    first_login_at: datetime
     gender: Optional[str] = None
     cohort_day: Optional[int] = None
     cohort_week: Optional[int] = None
@@ -48,8 +61,41 @@ class PermanentUserProperties(BaseModel):
     source: Optional[str] = None
 
 
+class ChangeableUserProperties(BaseModel):
+    ehr_id: Optional[int] = None
+    uuid: UUID
+    event_time: datetime  # обязательное поле
+    language: Optional[str] = None
+    age: Optional[int] = None
+    app_city: Optional[str] = None
+    push_permission: Optional[bool] = None
+    location_permission: Optional[bool] = None
+    authorization_status: Optional[bool] = None
+    telemed_files_sent: Optional[int] = None
+    appointments_cancelled: Optional[int] = None
+    telemed_files_received: Optional[int] = None
+    telemed_messages_received: Optional[int] = None
+    telemed_messages_sent: Optional[int] = None
+    telemed_consultations_resumed: Optional[int] = None
+    appointments_booked: Optional[int] = None
+    session_id: Optional[int] = None
+    start_version: Optional[str] = None
+
+    @field_validator("event_time", mode="before")
+    @classmethod
+    def parse_event_time(cls, v):
+        """Обязательное поле: строго преобразует строку в datetime."""
+        if isinstance(v, datetime):
+            return v
+        try:
+            return datetime.fromisoformat(v.replace("Z", "+00:00"))
+        except (ValueError, TypeError, AttributeError) as e:
+            raise ValueError(
+                f"Invalid datetime format for event_time: '{v}'. Expected ISO 8601."
+            ) from e
+
+
 class TechnicalData(BaseModel):
-    """Schema for technical_data table - Amplitude service technical info."""
     uuid: UUID
     insert_id: Optional[str] = None
     amplitude_attribution_ids: Optional[Dict[str, Any]] = None
@@ -62,24 +108,36 @@ class TechnicalData(BaseModel):
 
 
 class TmpEventProperties(BaseModel):
-    """Schema for tmp_event_properties table - event properties as JSON."""
     uuid: Optional[UUID] = None
     event_properties_json: Optional[Dict[str, Any]] = None
 
 
 class TmpUserProperties(BaseModel):
-    """Schema for tmp_user_properties table - user properties (permanent and temporary)."""
     uuid: Optional[UUID] = None
     user_properties_json: Optional[Dict[str, Any]] = None
     language: Optional[str] = None
     session_id: Optional[int] = None
     start_version: Optional[str] = None
     migrated: Optional[bool] = None
-    event_time: Optional[str] = None  # ISO timestamp
+    event_time: Optional[datetime] = None
+
+    @field_validator("event_time", mode="before")
+    @classmethod
+    def parse_event_time(cls, v):
+        """Если поле присутствует, оно должно быть валидным datetime или None."""
+        if v is None:
+            return v
+        if isinstance(v, datetime):
+            return v
+        try:
+            return datetime.fromisoformat(v.replace("Z", "+00:00"))
+        except (ValueError, TypeError) as e:
+            raise ValueError(
+                f"Invalid datetime format for event_time: '{v}'. Expected ISO 8601."
+            ) from e
 
 
 class UserLocations(BaseModel):
-    """Schema for user_locations table - user geolocation data."""
     uuid: UUID
     location_lat: Optional[float] = None
     location_lng: Optional[float] = None
@@ -95,43 +153,36 @@ class UserLocations(BaseModel):
 
 
 class GetEventsPartResponse(BaseModel):
-    """Response schema for GET /dwh/events-part."""
     rows: List[EventsPart]
     count: int
 
 
 class GetMobileDevicesResponse(BaseModel):
-    """Response schema for GET /dwh/mobile-devices."""
     rows: List[MobileDevices]
     count: int
 
 
 class GetPermanentUserPropertiesResponse(BaseModel):
-    """Response schema for GET /dwh/permanent-user-properties."""
     rows: List[PermanentUserProperties]
     count: int
 
 
 class GetTechnicalDataResponse(BaseModel):
-    """Response schema for GET /dwh/technical-data."""
     rows: List[TechnicalData]
     count: int
 
 
 class GetEventPropertiesResponse(BaseModel):
-    """Response schema for GET /dwh/event-properties."""
     rows: List[TmpEventProperties]
     count: int
 
 
 class GetUserPropertiesResponse(BaseModel):
-    """Response schema for GET /dwh/user-properties."""
     rows: List[TmpUserProperties]
     count: int
 
 
 class GetUserLocationsResponse(BaseModel):
-    """Response schema for GET /dwh/user-locations."""
     rows: List[UserLocations]
     count: int
 
@@ -142,15 +193,15 @@ class GetUserLocationsResponse(BaseModel):
 
 
 class InsertResponse(BaseModel):
-    """Response schema for single POST endpoints."""
-    inserted_id: int = Field(..., description="ID of inserted row")
+    inserted_id: int
 
 
 class BatchInsertResponse(BaseModel):
-    """Response schema for batch POST endpoints."""
-    inserted_ids: List[int] = Field(..., description="List of inserted row IDs")
+    inserted_ids: List[str] = Field(
+        ..., description="Primary keys of inserted rows (as strings)"
+    )
     count: int = Field(..., description="Total number of rows inserted")
-    batches: int = Field(..., description="Number of batches used (if data exceeded size limit)")
+    batches: int = Field(..., description="Number of batches used")
 
 
 # =======================
@@ -159,35 +210,41 @@ class BatchInsertResponse(BaseModel):
 
 
 class EventsPartBatch(BaseModel):
-    """Batch request for events_part."""
     data: List[EventsPart]
 
 
 class MobileDevicesBatch(BaseModel):
-    """Batch request for mobile_devices."""
     data: List[MobileDevices]
 
 
 class PermanentUserPropertiesBatch(BaseModel):
-    """Batch request for permanent_user_properties."""
     data: List[PermanentUserProperties]
 
 
 class TechnicalDataBatch(BaseModel):
-    """Batch request for technical_data."""
     data: List[TechnicalData]
 
 
 class TmpEventPropertiesBatch(BaseModel):
-    """Batch request for tmp_event_properties."""
     data: List[TmpEventProperties]
 
 
 class TmpUserPropertiesBatch(BaseModel):
-    """Batch request for tmp_user_properties."""
     data: List[TmpUserProperties]
 
 
 class UserLocationsBatch(BaseModel):
-    """Batch request for user_locations."""
     data: List[UserLocations]
+
+
+class ChangeableUserPropertiesBatch(BaseModel):
+    """Batch request for changeable_user_properties."""
+
+    data: List[ChangeableUserProperties]
+
+
+class GetChangeableUserPropertiesResponse(BaseModel):
+    """Response schema for GET /dwh/changeable-user-properties."""
+
+    rows: List[ChangeableUserProperties]
+    count: int

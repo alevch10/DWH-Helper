@@ -1,34 +1,39 @@
 """Amplitude API router for FastAPI."""
 
-import io
 import zipfile
 import gzip
 import tempfile
-import shutil
 import os
-from fastapi import APIRouter, Query, HTTPException, Response, BackgroundTasks, Depends
+
+from fastapi import APIRouter, Query, HTTPException, BackgroundTasks, Depends
 from app.auth.deps import require_read
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Literal
 from datetime import datetime
-from app.amplitude.client import AmplitudeClient
-from app.config.settings import settings
-import logging
 
-logger = logging.getLogger(__name__)
+from app.amplitude.client import AmplitudeClient
+from app.config.logger import get_logger
+
+logger = get_logger(__name__)
 router = APIRouter(prefix="/amplitude", tags=["Amplitude"])
+
 
 class AmplitudeExportRequest(BaseModel):
     start: str = Query(..., description="Start date (YYYYMMDD)", example="20240201")
     end: str = Query(..., description="End date (YYYYMMDD)", example="20240207")
     source: Literal["web", "mobile"] = Query("web", description="Source: web or mobile")
 
-@router.get("/export", response_class=FileResponse, summary="Экспорт данных из Amplitude")
+
+@router.get(
+    "/export", response_class=FileResponse, summary="Экспорт данных из Amplitude"
+)
 async def amplitude_export(
     start: str = Query(..., description="Дата начала (YYYYMMDD)", example="20240201"),
     end: str = Query(..., description="Дата конца (YYYYMMDD)", example="20240207"),
-    source: Literal["web", "mobile"] = Query("web", description="Источник: web или mobile"),
+    source: Literal["web", "mobile"] = Query(
+        "web", description="Источник: web или mobile"
+    ),
     background_tasks: BackgroundTasks = None,
     user=Depends(require_read),
 ):
@@ -56,7 +61,9 @@ async def amplitude_export(
         with zipfile.ZipFile(zip_path) as zip_ref:
             gz_files = [name for name in zip_ref.namelist() if name.endswith(".gz")]
             if not gz_files:
-                raise HTTPException(status_code=400, detail="Нет .gz файлов в архиве Amplitude")
+                raise HTTPException(
+                    status_code=400, detail="Нет .gz файлов в архиве Amplitude"
+                )
             all_lines = []
             for gz_name in gz_files:
                 with zip_ref.open(gz_name) as gz_file:
@@ -78,10 +85,15 @@ async def amplitude_export(
         # Копируем архив во временный файл вне tmpdir
         import tempfile as _tempfile
         import shutil as _shutil
+
         temp_zip = _tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
         _shutil.copyfile(out_zip_path, temp_zip.name)
         temp_zip.close()
         # Удалить файл после отправки
         if background_tasks is not None:
             background_tasks.add_task(os.remove, temp_zip.name)
-        return FileResponse(temp_zip.name, filename=f"{year}_week_{week}.zip", media_type="application/zip")
+        return FileResponse(
+            temp_zip.name,
+            filename=f"{year}_week_{week}.zip",
+            media_type="application/zip",
+        )

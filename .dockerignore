@@ -1,4 +1,3 @@
-.env
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -25,3 +24,4 @@ venv/
 .idea/
 .pytest_cache
 dwh.db
+.ruff_cache

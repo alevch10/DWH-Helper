@@ -1,11 +1,11 @@
-
 from fastapi import Request, APIRouter, HTTPException, Query, Depends
 from app.auth.deps import require_read
-from pydantic import BaseModel, Field
-from typing import Any, Optional
+from typing import Optional
 
 from .client import client
+from app.config.logger import get_logger
 
+logger = get_logger(__name__)
 router = APIRouter(tags=["AppMetrica"])
 
 
@@ -17,14 +17,21 @@ async def ping(user=Depends(require_read)):
 @router.get("/export")
 async def export_events(
     request: Request,
-    application_id: Optional[str] = Query(None, description="AppMetrica application ID (uses config default if not provided)"),
+    application_id: Optional[str] = Query(
+        None,
+        description="AppMetrica application ID (uses config default if not provided)",
+    ),
     skip_unavailable_shards: bool = Query(False, description="Skip unavailable shards"),
-    date_since: Optional[str] = Query(None, description="Start date (format: YYYY-MM-DD HH:MM:SS)"),
-    date_until: Optional[str] = Query(None, description="End date (format: YYYY-MM-DD HH:MM:SS)"),
+    date_since: Optional[str] = Query(
+        None, description="Start date (format: YYYY-MM-DD HH:MM:SS)"
+    ),
+    date_until: Optional[str] = Query(
+        None, description="End date (format: YYYY-MM-DD HH:MM:SS)"
+    ),
     date_dimension: str = Query("default", description="Date dimension"),
     use_utf8_bom: bool = Query(True, description="Use UTF-8 BOM"),
     fields: Optional[str] = Query(None, description="Comma-separated field list"),
-    user=Depends(require_read)
+    user=Depends(require_read),
 ):
     """Request AppMetrica export. Date format: `YYYY-MM-DD HH:MM:SS`.
 

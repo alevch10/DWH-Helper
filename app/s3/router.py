@@ -1,14 +1,14 @@
 """FastAPI router for S3 storage operations."""
 
-import logging
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Depends
 from app.auth.deps import require_read, require_write
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 
 from app.s3.client import S3Client
+from app.config.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 router = APIRouter(prefix="/s3", tags=["S3"])
 
 # Initialize S3 client (singleton)
@@ -20,6 +20,7 @@ s3_client = S3Client()
 # =======================
 class S3ObjectInfo(BaseModel):
     """Information about an S3 object."""
+
     key: str
     size: Optional[int] = None
     exists: bool = False
@@ -27,6 +28,7 @@ class S3ObjectInfo(BaseModel):
 
 class S3ObjectList(BaseModel):
     """List of S3 objects."""
+
     prefix: str
     objects: List[Dict[str, Any]]
     count: int
@@ -34,6 +36,7 @@ class S3ObjectList(BaseModel):
 
 class S3UploadResponse(BaseModel):
     """Response after uploading object to S3."""
+
     key: str
     etag: Optional[str] = None
     version_id: Optional[str] = None
@@ -42,6 +45,7 @@ class S3UploadResponse(BaseModel):
 
 class S3DeleteResponse(BaseModel):
     """Response after deleting object from S3."""
+
     key: str
     deleted: bool
 
@@ -50,10 +54,13 @@ class S3DeleteResponse(BaseModel):
 # GET Endpoints
 # =======================
 @router.get("/objects", response_model=S3ObjectList)
-async def list_objects(prefix: str = Query("", description="S3 prefix/folder path"), user=Depends(require_read)):
+async def list_objects(
+    prefix: str = Query("", description="S3 prefix/folder path"),
+    user=Depends(require_read),
+):
     """
     List objects in S3 with optional prefix.
-    
+
     Returns direct files only (no nested subdirectories).
     """
     try:
@@ -69,7 +76,9 @@ async def list_objects(prefix: str = Query("", description="S3 prefix/folder pat
 
 
 @router.get("/object-info", response_model=S3ObjectInfo)
-async def get_object_info(key: str = Query(..., description="S3 object key"), user=Depends(require_read)):
+async def get_object_info(
+    key: str = Query(..., description="S3 object key"), user=Depends(require_read)
+):
     """Get information about an S3 object (size, existence)."""
     try:
         exists = s3_client.object_exists(key)
@@ -81,20 +90,24 @@ async def get_object_info(key: str = Query(..., description="S3 object key"), us
         }
     except Exception as e:
         logger.error(f"Error getting object info: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error getting object info: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error getting object info: {str(e)}"
+        )
 
 
 @router.get("/download")
-async def download_object(key: str = Query(..., description="S3 object key"), user=Depends(require_read)):
+async def download_object(
+    key: str = Query(..., description="S3 object key"), user=Depends(require_read)
+):
     """
     Download object from S3.
-    
+
     Returns the file content with appropriate headers.
     """
     try:
         if not s3_client.object_exists(key):
             raise HTTPException(status_code=404, detail=f"Object not found: {key}")
-        
+
         data = s3_client.get_object(key)
         return {
             "key": key,
@@ -105,7 +118,9 @@ async def download_object(key: str = Query(..., description="S3 object key"), us
         raise
     except Exception as e:
         logger.error(f"Error downloading object: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error downloading object: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error downloading object: {str(e)}"
+        )
 
 
 # =======================
@@ -119,7 +134,7 @@ async def upload_object(
 ):
     """
     Upload file to S3.
-    
+
     Args:
         key: S3 object key/path
         file: File content
@@ -127,7 +142,7 @@ async def upload_object(
     try:
         content = await file.read()
         content_type = file.content_type or "application/octet-stream"
-        
+
         result = s3_client.put_object(key, content, content_type=content_type)
         return {
             "key": result["Key"],
@@ -141,19 +156,23 @@ async def upload_object(
 
 
 @router.post("/upload-binary")
-async def upload_binary(key: str = Query(..., description="S3 object key"), user=Depends(require_write)):
+async def upload_binary(
+    key: str = Query(..., description="S3 object key"), user=Depends(require_write)
+):
     """
     Upload binary data to S3 from request body.
-    
+
     Args:
         key: S3 object key/path
-        
+
     Body: Raw binary data
     """
     try:
         # This endpoint receives raw binary data
         # In a real scenario, you'd read from request.body or similar
-        raise HTTPException(status_code=501, detail="Use /upload endpoint with multipart form data")
+        raise HTTPException(
+            status_code=501, detail="Use /upload endpoint with multipart form data"
+        )
     except Exception as e:
         logger.error(f"Error uploading binary: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error uploading: {str(e)}")
@@ -170,7 +189,7 @@ async def update_object(
 ):
     """
     Update existing object in S3 (PUT).
-    
+
     Args:
         key: S3 object key/path
         file: New file content
@@ -178,11 +197,11 @@ async def update_object(
     try:
         content = await file.read()
         content_type = file.content_type or "application/octet-stream"
-        
+
         # Check if object exists
         if not s3_client.object_exists(key):
             logger.warning(f"Object does not exist: {key}. Creating new object.")
-        
+
         result = s3_client.update_object(key, content, content_type=content_type)
         return {
             "key": result["Key"],
@@ -207,9 +226,9 @@ async def patch_object(
 ):
     """
     Patch (partial update) object in S3.
-    
+
     Note: S3 doesn't support true PATCH. This operation replaces/appends data.
-    
+
     Args:
         key: S3 object key/path
         file: Data to append/write
@@ -218,10 +237,10 @@ async def patch_object(
     try:
         content = await file.read()
         content_type = file.content_type or "application/octet-stream"
-        
+
         if not s3_client.object_exists(key):
             raise HTTPException(status_code=404, detail=f"Object not found: {key}")
-        
+
         result = s3_client.patch_object(key, content, offset=offset)
         return {
             "key": result["Key"],
@@ -240,17 +259,19 @@ async def patch_object(
 # DELETE Endpoints
 # =======================
 @router.delete("/delete", response_model=S3DeleteResponse)
-async def delete_object(key: str = Query(..., description="S3 object key"), user=Depends(require_write)):
+async def delete_object(
+    key: str = Query(..., description="S3 object key"), user=Depends(require_write)
+):
     """
     Delete object from S3.
-    
+
     Args:
         key: S3 object key/path
     """
     try:
         if not s3_client.object_exists(key):
             raise HTTPException(status_code=404, detail=f"Object not found: {key}")
-        
+
         s3_client.delete_object(key)
         return {
             "key": key,

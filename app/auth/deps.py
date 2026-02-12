@@ -1,18 +1,20 @@
-import time
 import httpx
 import jwt
-from fastapi import Depends, HTTPException, status, Request
-from fastapi.security import HTTPBearer
-from pydantic import BaseModel
-from app.config.settings import settings
 
+from fastapi import Depends, HTTPException, Request
+from fastapi.security import HTTPBearer
+
+from .schemas import User
+from app.config.settings import settings
+from app.config.logger import get_logger
+
+logger = get_logger(__name__)
 oauth2_scheme = HTTPBearer()
 
-class User(BaseModel):
-    login: str
-    access: str  # "read" or "write"
 
-async def get_current_user(request: Request, credentials=Depends(oauth2_scheme)) -> User:
+async def get_current_user(
+    request: Request, credentials=Depends(oauth2_scheme)
+) -> User:
     oauth_token = credentials.credentials
 
     async with httpx.AsyncClient() as client:
@@ -30,7 +32,6 @@ async def get_current_user(request: Request, credentials=Depends(oauth2_scheme))
 
         jwt_token = resp.text.strip()
 
-    # 2. Проверяем подпись и всё остальное
     try:
         payload = jwt.decode(
             jwt_token,
@@ -39,7 +40,7 @@ async def get_current_user(request: Request, credentials=Depends(oauth2_scheme))
             options={
                 "require": ["exp", "iat"],
                 "verify_exp": True,
-            }
+            },
         )
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="JWT expired")
@@ -59,10 +60,12 @@ async def get_current_user(request: Request, credentials=Depends(oauth2_scheme))
 
     raise HTTPException(status_code=403, detail="Access denied")
 
+
 def require_write(user: User = Depends(get_current_user)):
     if user.access != "write":
         raise HTTPException(status_code=403, detail="Write access required")
     return user
+
 
 def require_read(user: User = Depends(get_current_user)):
     return user

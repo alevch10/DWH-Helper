@@ -1,7 +1,12 @@
 import httpx
 import asyncio
-from typing import Any, Optional
+
+from typing import Optional
+
 from app.config.settings import settings
+from app.config.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class AppMetricaClient:
@@ -32,8 +37,14 @@ class AppMetricaClient:
             # return simulated export data
             sample = {
                 "data": [
-                    {"event_name": "Banner Shown", "event_datetime": "2026-02-09 16:20:55"},
-                    {"event_name": "Create Appointment", "event_datetime": "2026-02-09 16:21:03"},
+                    {
+                        "event_name": "Banner Shown",
+                        "event_datetime": "2026-02-09 16:20:55",
+                    },
+                    {
+                        "event_name": "Create Appointment",
+                        "event_datetime": "2026-02-09 16:21:03",
+                    },
                 ]
             }
             return {"status": "ready", "result": sample}
@@ -71,7 +82,10 @@ class AppMetricaClient:
                     if r2.status_code == 200:
                         return {"status": "ready", "result": r2.json()}
                     # continue polling
-                return {"status": "pending", "detail": "Timeout while waiting for export"}
+                return {
+                    "status": "pending",
+                    "detail": "Timeout while waiting for export",
+                }
             elif resp.status_code == 200:
                 return {"status": "ready", "result": resp.json()}
             else:

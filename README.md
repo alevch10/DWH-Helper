@@ -10,18 +10,32 @@ FastAPI application for product-analytics data ingestion with DWH integration, A
 
 ```
 app/
-├── config/
-│   ├── settings.py      (Pydantic BaseSettings with nested config blocks)
-│   ├── logger.py        (Logging configuration)
-│   └── __init__.py
-├── dwh_tables_worker/   (7 DWH table operations)
-│   ├── schemas.py       (Pydantic validation models)
+├── amplitude/
+│   ├── client.py        (Async Amplitude client)
 │   ├── router.py        (FastAPI endpoints)
 │   └── __init__.py
 ├── appmetrica/          (AppMetrica API integration)
 │   ├── client.py        (Async AppMetrica client)
 │   ├── router.py        (FastAPI endpoints)
 │   └── __init__.py
+├── auth/                (Authentification module)
+│   ├── deps.py          (Auth dependensy)
+│   └── __init__.py
+├── config/
+│   ├── settings.py      (Pydantic BaseSettings with nested config blocks)
+│   ├── logger.py        (Logging configuration)
+│   └── __init__.py
+│   ├── dwh_tables_worker/
+│   ├── init.py          (экспорт router)
+│   ├── repository.py    (DWHRepository (пул, общие/специфические методы))
+│   ├── router.py        (FastAPI endpoints (POST/GET))
+│   ├── schemas.py       (Pydantic-модели таблиц + валидация)
+├── processor/
+│   ├── __init__.py             # загрузка field_mappings.yaml → MAPPINGS
+│   ├── transformer.py          # transform_single_record + логика маппинга
+│   ├── orchestrator.py         # process_source, _process_record, compare_changeable, ProcessingInterrupted
+│   ├── field_mappings.yaml     # конфиг маппинга (permanent + changeable)
+│   └── router.py               # POST /transform/user-properties
 ├── s3/                  (AWS S3 storage operations)
 │   ├── client.py        (Boto3 S3 client)
 │   ├── router.py        (FastAPI endpoints)
@@ -75,9 +89,12 @@ DEBUG=false
 
 ### Database (DWH)
 ```env
-DWH_DATABASE_URL="sqlite:///./dwh.db"
-DWH_MAX_WRITE_BATCH_BYTES=10000000        # 10MB batch limit
-DWH_MAX_ROWS_PER_INSERT=1000              # Max rows per INSERT statement
+# Database (DWH) - PostgreSQL
+DWH_DATABASE_HOST=localhost
+DWH_DATABASE_PORT=5432
+DWH_DATABASE_NAME=dwh
+DWH_DATABASE_USER=postgres
+DWH_DATABASE_PASSWORD=secret
 ```
 
 ### AppMetrica API
@@ -109,71 +126,82 @@ LOGGING_LEVEL=INFO
 
 ### 1. DWH Tables Worker (`/dwh`)
 
-Manages 7 DWH tables with batch insert support:
+Модуль для работы с 8 таблицами PostgreSQL DWH.
+Обеспечивает **единый репозиторий** с пулом соединений, динамическим расчётом лимитов и строгой валидацией.
 
-**Tables:**
-- `events_part` - User events with device/session info
-- `mobile_devices` - Mobile device metadata
-- `permanent_user_properties` - Static user properties
-- `technical_data` - Amplitude technical info
-- `tmp_event_properties` - Event properties (JSON)
-- `tmp_user_properties` - User properties (JSON)
-- `user_locations` - Geolocation data
+**Таблицы:**
+- `events_part` — события пользователей с устройством и сессией
+- `mobile_devices` — метаданные мобильных устройств
+- `permanent_user_properties` — статические свойства пользователя
+- `changeable_user_properties` — изменяемые свойства с историей
+- `technical_data` — техническая информация Amplitude
+- `tmp_event_properties` — свойства событий (JSONB)
+- `tmp_user_properties` — свойства пользователей (JSONB) с флагом `migrated`
+- `user_locations` — геолокационные данные
 
-**GET Endpoints** - Retrieve records:
+**GET Endpoints** — выборка с фильтрацией и сортировкой:
 ```bash
 GET /dwh/events-part
 GET /dwh/mobile-devices
 GET /dwh/permanent-user-properties
+GET /dwh/changeable-user-properties
 GET /dwh/technical-data
 GET /dwh/event-properties
 GET /dwh/user-properties
 GET /dwh/user-locations
 ```
-
-Response format:
-```json
+Параметры запроса (все опциональны):
+- pk — фильтр по первичному ключу (uuid, device_id, ehr_id)
+- limit — ограничение количества строк
+- sort_by — колонка для сортировки
+- sort_dir — направление: asc/desc (по умолч. asc)
+- migrated — (только для /user-properties) фильтр по флагу migrated
+Ответ:
+``` json
 {
   "rows": [...],
   "count": 10
 }
 ```
+**POST Endpoints** — пакетная вставка:
 
-**POST Endpoints** - Batch insert with automatic chunking:
-```bash
+``` bash
 POST /dwh/events-part
 POST /dwh/mobile-devices
 POST /dwh/permanent-user-properties
+POST /dwh/changeable-user-properties
 POST /dwh/technical-data
 POST /dwh/event-properties
 POST /dwh/user-properties
 POST /dwh/user-locations
 ```
-
-Request format:
-```json
+Тело запроса:
+``` json
 {
-  "data": [
-    {...},
-    {...},
-    ...
-  ]
+  "data": [{...}, {...}, ...]
 }
 ```
-
-Response format:
-```json
+Ответ:
+```
+json
 {
-  "inserted_ids": [1, 2, 3],
-  "count": 3,
-  "batches": 1
+  "inserted_ids": ["3fa85f64-5717-4562-b3fc-2c963f66afa6", ...],
+  "count": 42,
+  "batches": 2
 }
 ```
+Ключевые особенности реализации:
+✅ PostgreSQL — подключение через psycopg2.pool.ThreadedConnectionPool
+✅ Единый репозиторий — все общие методы (insert_batch, select) + специфические (get_latest_changeable_for_ehrs, update_migrated_tmp)
+✅ Динамический расчёт лимита строк — на основе количества колонок в Pydantic-модели и протокольного лимита PostgreSQL (65 535 параметров). Используется SAFETY_FACTOR = 0.7.
+✅ Автоматическое чанкование — разбиение по строкам, никаких проверок по байтам.
+✅ Возврат ID вставленных записей — через RETURNING (значения приводятся к строке).
+✅ Реальный подсчёт количества батчей — возвращается в поле batches.
+✅ Строгая валидация дат — event_time принимает только ISO 8601, невалидные данные вызывают HTTP 422.
+✅ Поддержка ON CONFLICT — для permanent_user_properties и changeable_user_properties.
+✅ Специфические методы — get_all_permanent_ehr_ids, get_latest_changeable_for_ehrs, upsert_changeable, update_migrated_tmp.
+✅ Полная обратная совместимость — модули, использовавшие старый DBClass, могут переключиться на DWHRepository.
 
-**Features:**
-- ✅ Automatic chunking when exceeding `max_rows_per_insert` or `max_write_batch_bytes`
-- ✅ Simplified response format (no wrapper objects)
-- ✅ Error handling for empty data arrays
 
 ---
 
