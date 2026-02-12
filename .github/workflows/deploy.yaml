@@ -84,13 +84,15 @@ jobs:
             AUTH_WRITE_ACCESS=${{ vars.AUTH_WRITE_ACCESS }}
             LOGGING_LEVEL=${{ vars.LOGGING_LEVEL }}
 
-            DWH_DATABASE_NAME=${{ vars.DWH_DATABASE_NAME }}
-            DWH_DATABASE_USER=${{ vars.DWH_DATABASE_USER }}
-            DWH_DATABASE_PASSWORD=${{ secrets.DWH_DATABASE_PASSWORD }}
-            DWH_DATABASE_HOST=${{ vars.DWH_DATABASE_HOST }}
-            DWH_DATABASE_PORT=${{ vars.DWH_DATABASE_PORT }}
-            DWH_MAX_PARAMS_PER_QUERY=${{ vars.DWH_MAX_PARAMS_PER_QUERY }}
-            DWH_SAFETY_FACTOR=${{ vars.DWH_SAFETY_FACTOR }}
+            DB_NAME=${{ vars.DB_NAME }}
+            DB_USER=${{ vars.DB_USER }}
+            DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+            DB_HOST=${{ vars.DB_HOST }}
+            DB_PORT=${{ vars.DB_PORT }}
+            DB_MAX_PARAMS_PER_QUERY=${{ vars.DB_MAX_PARAMS_PER_QUERY }}
+            DB_SAFETY_FACTOR=${{ vars.DB_SAFETY_FACTOR }}
+            DB_MINCONN=${{ vars.DB_MINCONN }}
+            DB_MAXCON=${{ vars.DB_MAXCON }}
 
             APPMETRICA_BASE_URL="${{ vars.APPMETRICA_BASE_URL }}"
             APPMETRICA_APPLICATION_ID=${{ vars.APPMETRICA_APPLICATION_ID }}
