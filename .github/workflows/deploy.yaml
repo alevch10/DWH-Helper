@@ -91,7 +91,7 @@ jobs:
             DB_PORT=${{ vars.DB_PORT }}
             DB_MAX_PARAMS_PER_QUERY=${{ vars.DB_MAX_PARAMS_PER_QUERY }}
             DB_SAFETY_FACTOR=${{ vars.DB_SAFETY_FACTOR }}
-            DB_MINCONN=${{ vars.DB_MINCONN }}
+            DB_MINCON=${{ vars.DB_MINCON }}
             DB_MAXCON=${{ vars.DB_MAXCON }}
 
             APPMETRICA_BASE_URL="${{ vars.APPMETRICA_BASE_URL }}"
