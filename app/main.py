@@ -15,7 +15,10 @@ logger = get_logger(__name__)
 
 app = FastAPI(
     title=settings.title,
-    description=settings.description,
+    description=(
+        f"{settings.description}\n\n"
+        f"[Получить API-токен](https://oauth.yandex.ru/authorize?response_type=token&client_id={settings.yandex.client_id})"
+    ),
     version=settings.version,
     debug=settings.debug,
 )
@@ -35,7 +38,7 @@ app.include_router(amplitude_router, prefix="/amplitude", tags=["Amplitude"])
 app.include_router(appmetrica_router, prefix="/appmetrica", tags=["AppMetrica"])
 app.include_router(db_router, prefix="/db", tags=["DB"])
 app.include_router(s3_router, prefix="/s3", tags=["S3"])
-app.include_router(etl_router, prefix="/processor", tags=["Processor"])
+app.include_router(etl_router, prefix="/etl", tags=["ETL"])
 
 
 @app.on_event("shutdown")
