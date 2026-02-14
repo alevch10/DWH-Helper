@@ -62,7 +62,15 @@ class DBRepository:
 
         theoretical_max = settings.db.max_params_per_query // col_count
         safe_max = int(theoretical_max * settings.db.safety_factor)
-        configured_max = getattr(settings.db, "max_rows_per_insert")
+
+        # Если настройка max_rows_per_insert не задана, используем значение по умолчанию
+        configured_max = getattr(settings.db, "max_rows_per_insert", 10000)
+        if not hasattr(settings.db, "max_rows_per_insert"):
+            logger.warning(
+                "settings.db.max_rows_per_insert not set, using default 10000. "
+                "Consider adding this parameter to your DBSettings."
+            )
+
         return min(safe_max, configured_max)
 
     # ---------- Управление соединениями ----------
@@ -130,7 +138,7 @@ class DBRepository:
 
         query_str = self._to_sql_string(query)
         self.execute(query_str, tuple(values))
-        logger.info("insert_one fihished")
+        logger.info("insert_one finished")
 
     def insert_permanent(self, record: schemas.PermanentUserProperties) -> None:
         """Вставка или игнорирование записи в permanent_user_properties (ON CONFLICT DO NOTHING)."""
@@ -160,7 +168,7 @@ class DBRepository:
         max_rows_per_batch = self._max_rows_for_table(table)
         all_inserted_ids: List[str] = []
         batches_used = 0
-        logger.info("insert_batch")
+        logger.info(f"insert_batch for table {table}, total rows: {len(rows)}")
         for i in range(0, len(rows), max_rows_per_batch):
             chunk = rows[i : i + max_rows_per_batch]
             ids = self._insert_batch_query(
@@ -168,7 +176,7 @@ class DBRepository:
             )
             all_inserted_ids.extend(ids)
             batches_used += 1
-        logger.info("batch inserted")
+        logger.info(f"batch inserted for {table}, batches: {batches_used}")
         return all_inserted_ids, batches_used
 
     def _insert_batch_query(
@@ -213,7 +221,8 @@ class DBRepository:
                 cur.execute(query, params)
                 if returning_column:
                     rows = cur.fetchall()
-                    inserted_ids = [str(row[0]) for row in rows]
+                    # Исправление: берём значение по имени колонки
+                    inserted_ids = [str(row[returning_column]) for row in rows]
                 else:
                     inserted_ids = []
                 return inserted_ids
@@ -225,18 +234,37 @@ class DBRepository:
         self,
         table: str,
         where: Optional[Dict[str, Any]] = None,
+        where_conditions: Optional[
+            List[Tuple[str, str, Any]]
+        ] = None,  # (колонка, оператор, значение)
         order_by: Optional[List[str]] = None,
         limit: Optional[int] = None,
         offset: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
+        """
+        Выполняет SELECT из таблицы с возможностью фильтрации.
+        :param table: имя таблицы
+        :param where: словарь условий равенства (колонка = значение)
+        :param where_conditions: список кортежей (колонка, оператор, значение) для произвольных операторов
+        :param order_by: список полей для сортировки (префикс "-" для убывания)
+        :param limit: максимальное количество строк
+        :param offset: смещение
+        :return: список словарей с результатами
+        """
         query = SQL("SELECT * FROM {}").format(Identifier(table))
         params = []
 
+        conditions = []
         if where:
-            conditions = []
             for col, val in where.items():
                 conditions.append(SQL("{} = %s").format(Identifier(col)))
                 params.append(val)
+        if where_conditions:
+            for col, op, val in where_conditions:
+                conditions.append(SQL("{} {} %s").format(Identifier(col), SQL(op)))
+                params.append(val)
+
+        if conditions:
             query += SQL(" WHERE ") + SQL(" AND ").join(conditions)
 
         if order_by:
@@ -264,10 +292,25 @@ class DBRepository:
 
     # ---------- Специфические методы ----------
     def get_all_permanent_ehr_ids(self) -> Set[int]:
-        logger.info("ehr list select")
+        logger.info("Fetching all ehr_id from permanent_user_properties")
         rows = self.execute("SELECT ehr_id FROM permanent_user_properties")
-        logger.info("ehr list selected")
-        return {row["ehr_id"] for row in rows}
+        ehr_set = {row["ehr_id"] for row in rows}
+        logger.info(f"Fetched {len(ehr_set)} permanent ehr_ids")
+        return ehr_set
+
+    def get_existing_permanent(self, ehr_ids: List[int]) -> Set[int]:
+        """
+        Возвращает множество ehr_id из permanent_user_properties,
+        которые присутствуют в переданном списке.
+        """
+        if not ehr_ids:
+            return set()
+        placeholders = ",".join(["%s"] * len(ehr_ids))
+        query = f"SELECT ehr_id FROM permanent_user_properties WHERE ehr_id IN ({placeholders})"
+        rows = self.execute(query, tuple(ehr_ids))
+        existing = {row["ehr_id"] for row in rows}
+        logger.info(f"Checked {len(ehr_ids)} ehr_ids, {len(existing)} already exist")
+        return existing
 
     def get_latest_changeable_for_ehrs(
         self, ehr_ids: List[Optional[int]]
@@ -278,7 +321,9 @@ class DBRepository:
         non_null = [eid for eid in ehr_ids if eid is not None]
         has_null = any(eid is None for eid in ehr_ids)
         result = {}
-        logger.info("last changeable_user_propertie select")
+        logger.info(
+            f"Fetching latest changeable for {len(non_null)} non-null ehr_ids (has_null={has_null})"
+        )
         if non_null:
             placeholders = ",".join(["%s"] * len(non_null))
             query = f"""
@@ -306,7 +351,7 @@ class DBRepository:
             row = self.execute(query)
             if row:
                 result[None] = schemas.ChangeableUserProperties(**row[0])
-        logger.info("last changeable_user_propertie selected")
+        logger.info(f"Fetched {len(result)} latest changeable records")
         return result
 
     def insert_changeable(self, record: schemas.ChangeableUserProperties) -> None:
@@ -330,6 +375,16 @@ class DBRepository:
         """Пометить запись как обработанную. Принимает UUID (не строку)."""
         query = "UPDATE tmp_user_properties SET migrated = %s WHERE uuid = %s"
         self.execute(query, (migrated, uuid))
+
+    def update_migrated_batch(self, uuids: List[UUID], migrated: bool = True) -> None:
+        """Пометить несколько записей как обработанные (migrated = True/False) одним запросом."""
+        if not uuids:
+            return
+        query = "UPDATE tmp_user_properties SET migrated = %s WHERE uuid = ANY(%s)"
+        self.execute(query, (migrated, uuids))
+        logger.info(
+            f"Marked {len(uuids)} records as migrated={migrated} in tmp_user_properties"
+        )
 
 
 # ---------- Глобальный синглтон ----------

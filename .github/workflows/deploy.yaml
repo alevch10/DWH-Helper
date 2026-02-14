@@ -90,6 +90,7 @@ jobs:
             DB_HOST=${{ vars.DB_HOST }}
             DB_PORT=${{ vars.DB_PORT }}
             DB_MAX_PARAMS_PER_QUERY=${{ vars.DB_MAX_PARAMS_PER_QUERY }}
+            DB_MAX_ROWS_PER_INSERT=${{ vars.DB_MAX_ROWS_PER_INSERT }}
             DB_SAFETY_FACTOR=${{ vars.DB_SAFETY_FACTOR }}
             DB_MINCON=${{ vars.DB_MINCON }}
             DB_MAXCON=${{ vars.DB_MAXCON }}
@@ -112,6 +113,8 @@ jobs:
 
             YANDEX_CLIENT_ID="${{ vars.YANDEX_CLIENT_ID }}"
             YANDEX_CLIENT_SECRET="${{ secrets.YANDEX_CLIENT_SECRET }}"
+
+            ETL_BATCH_SIZE="${{ vars.ETL_BATCH_SIZE }}"
             END_ENV
 
             cat > docker-compose.yml <<'END_COMPOSE'

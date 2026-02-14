@@ -128,7 +128,9 @@ async def export_events(
         zip_buffer.seek(0)
 
         # Имя скачиваемого архива
-        zip_name = f"appmetrica_export_{date_since or 'since'}_{date_until or 'until'}.zip"
+        zip_name = (
+            f"appmetrica_export_{date_since or 'since'}_{date_until or 'until'}.zip"
+        )
 
         return StreamingResponse(
             zip_buffer,

@@ -24,7 +24,7 @@ class AppMetricaClient:
         date_dimension: str = "default",
         use_utf8_bom: bool = True,
         fields: Optional[str] = None,
-        export_format: str = "csv",          # новый параметр: 'csv' или 'json'
+        export_format: str = "csv",  # новый параметр: 'csv' или 'json'
         poll_timeout: Optional[int] = None,
         poll_interval: Optional[int] = None,
         api_key: str = None,

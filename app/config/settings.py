@@ -2,9 +2,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import BaseModel, Field, field_validator
 
 
-# =======================
-# DB (Database) Settings
-# =======================
 class DBSettings(BaseModel):
     """Data Warehouse settings."""
 
@@ -14,14 +11,12 @@ class DBSettings(BaseModel):
     host: str
     port: int
     max_params_per_query: int
+    max_rows_per_insert: int
     safety_factor: float
     minconn: int = 1
     maxconn: int = 10
 
 
-# =======================
-# AppMetrica API Settings
-# =======================
 class AppMetricaSettings(BaseModel):
     """AppMetrica integration settings."""
 
@@ -31,9 +26,6 @@ class AppMetricaSettings(BaseModel):
     poll_timeout_seconds: int
 
 
-# =======================
-# Yandex OAuth Settings
-# =======================
 class YandexOAuthSettings(BaseModel):
     """Yandex OAuth settings for user authentication."""
 
@@ -41,9 +33,6 @@ class YandexOAuthSettings(BaseModel):
     client_secret: str
 
 
-# =======================
-# S3 Storage Settings
-# =======================
 class S3Settings(BaseModel):
     """AWS S3 storage settings."""
 
@@ -54,9 +43,6 @@ class S3Settings(BaseModel):
     bucket_name: str
 
 
-# =======================
-# Logging Settings
-# =======================
 class LoggingSettings(BaseModel):
     """Logging configuration."""
 
@@ -64,9 +50,6 @@ class LoggingSettings(BaseModel):
     format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
 
-# =======================
-# Amplitude API Settings
-# =======================
 class AmplitudeSettings(BaseModel):
     """Amplitude API credentials for web and mobile sources."""
 
@@ -76,13 +59,13 @@ class AmplitudeSettings(BaseModel):
     mobile_client_id: str
 
 
-# =======================
-# Main Settings
-# =======================
+class ETLSettings(BaseModel):
+    batch_size: int
+
+
 class Settings(BaseSettings):
     """Application settings."""
 
-    # Application metadata
     title: str = "DWH Helper"
     version: str = "1.0.0"
     description: str = "Product analytics data ingestion and DWH integration"
@@ -104,6 +87,7 @@ class Settings(BaseSettings):
     logging: LoggingSettings
     amplitude: AmplitudeSettings
     yandex: YandexOAuthSettings
+    etl: ETLSettings
     read_access: str = Field(default="", validation_alias="AUTH_READ_ACCESS")
     write_access: str = Field(default="", validation_alias="AUTH_WRITE_ACCESS")
 
