@@ -18,7 +18,7 @@ class PermanentUserProperties(BaseModel):
     source: Optional[str] = None
 
 
-class ChangebleUserProperties(BaseModel):
+class ChangeableUserProperties(BaseModel):
     """Изменяемые свойства (последняя версия для ehr_id)."""
 
     ehr_id: Optional[int] = None
@@ -37,7 +37,7 @@ class ChangebleUserProperties(BaseModel):
     telemed_messages_sent: Optional[int] = None
     telemed_consultations_resumed: Optional[int] = None
     appointments_booked: Optional[int] = None
-    session_id: Optional[str] = None
+    session_id: Optional[int] = None
     start_version: Optional[str] = None
     ehr_count: Optional[int] = None
     google_pay_available: Optional[bool] = None

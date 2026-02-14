@@ -79,7 +79,22 @@ def transform_single_record(
         return None, None, errors
 
     language = raw_record.get("language")
-    session_id = raw_record.get("session_id")
+    session_id_raw = raw_record.get("session_id")
+    # Преобразуем session_id: если -1, то None, иначе int
+    if session_id_raw == -1 or session_id_raw == "-1":
+        session_id = None
+    else:
+        try:
+            session_id = int(session_id_raw) if session_id_raw is not None else None
+        except (ValueError, TypeError):
+            errors.append(
+                {
+                    "key": "session_id",
+                    "value": session_id_raw,
+                    "reason": "Invalid integer for session_id",
+                }
+            )
+            session_id = None
     start_version = raw_record.get("start_version")
 
     # --- user_properties ---
@@ -114,6 +129,7 @@ def transform_single_record(
     else:
         try:
             ehr_id = int(ehr_id_raw)
+            # Можно добавить проверку диапазона при необходимости
         except (ValueError, TypeError):
             ehr_id = None
             errors.append(
@@ -150,6 +166,10 @@ def transform_single_record(
                     value = match.group(0)
             try:
                 value = int(value)
+                # Здесь можно добавить проверку диапазона int32, если нужно
+                # if value < -2147483648 or value > 2147483647:
+                #     errors.append(...)
+                #     value = None
             except (ValueError, TypeError):
                 errors.append(
                     {
