@@ -159,7 +159,7 @@ def process_source(source_type: SourceType, params: Dict[str, Any]) -> Dict[str,
                 permanent, changeable, transform_errors = transform_single_record(
                     raw_record, source_type="tmp_table"
                 )
-
+                logger.info("Data transformed")
                 if transform_errors:
                     log_bads(transform_errors)
                     errors_count += len(transform_errors)
@@ -226,8 +226,10 @@ def _process_record(
 ):
     if permanent and permanent.ehr_id not in existing_permanent:
         try:
+            logger.info("insert_permanent")
             repo.insert_permanent(permanent)
             existing_permanent.add(permanent.ehr_id)
+            logger.info("inserted")
         except Exception as e:
             raise ProcessingInterrupted(
                 f"Ошибка вставки permanent ehr_id={permanent.ehr_id}: {str(e)}"
@@ -239,8 +241,10 @@ def _process_record(
 
         if compare_changeable(old, changeable):
             try:
+                logger.info("insert_changeable")
                 repo.insert_changeable(changeable)
                 last_change[ehr_id] = changeable
+                logger.info("inserted")
             except Exception as e:
                 raise ProcessingInterrupted(
                     f"Ошибка upsert changeable ehr_id={ehr_id}: {str(e)}"

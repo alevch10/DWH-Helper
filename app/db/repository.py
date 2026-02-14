@@ -115,6 +115,7 @@ class DBRepository:
         values = [data[col] for col in columns]
         placeholders = [Placeholder()] * len(columns)
 
+        logger.info("insert_one")
         query = SQL("INSERT INTO {} ({}) VALUES ({})").format(
             Identifier(table),
             SQL(", ").join(map(Identifier, columns)),
@@ -129,6 +130,7 @@ class DBRepository:
 
         query_str = self._to_sql_string(query)
         self.execute(query_str, tuple(values))
+        logger.info("insert_one fihished")
 
     def insert_permanent(self, record: schemas.PermanentUserProperties) -> None:
         """Вставка или игнорирование записи в permanent_user_properties (ON CONFLICT DO NOTHING)."""
@@ -158,7 +160,7 @@ class DBRepository:
         max_rows_per_batch = self._max_rows_for_table(table)
         all_inserted_ids: List[str] = []
         batches_used = 0
-
+        logger.info("insert_batch")
         for i in range(0, len(rows), max_rows_per_batch):
             chunk = rows[i : i + max_rows_per_batch]
             ids = self._insert_batch_query(
@@ -166,7 +168,7 @@ class DBRepository:
             )
             all_inserted_ids.extend(ids)
             batches_used += 1
-
+        logger.info("batch inserted")
         return all_inserted_ids, batches_used
 
     def _insert_batch_query(
@@ -262,7 +264,9 @@ class DBRepository:
 
     # ---------- Специфические методы ----------
     def get_all_permanent_ehr_ids(self) -> Set[int]:
+        logger.info("ehr list select")
         rows = self.execute("SELECT ehr_id FROM permanent_user_properties")
+        logger.info("ehr list selected")
         return {row["ehr_id"] for row in rows}
 
     def get_latest_changeable_for_ehrs(
@@ -274,7 +278,7 @@ class DBRepository:
         non_null = [eid for eid in ehr_ids if eid is not None]
         has_null = any(eid is None for eid in ehr_ids)
         result = {}
-
+        logger.info("last changeable_user_propertie select")
         if non_null:
             placeholders = ",".join(["%s"] * len(non_null))
             query = f"""
@@ -302,7 +306,7 @@ class DBRepository:
             row = self.execute(query)
             if row:
                 result[None] = schemas.ChangeableUserProperties(**row[0])
-
+        logger.info("last changeable_user_propertie selected")
         return result
 
     def insert_changeable(self, record: schemas.ChangeableUserProperties) -> None:
