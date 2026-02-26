@@ -1,14 +1,14 @@
+import ast
+import json
 from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional, Union, Any
 from datetime import date, datetime
-import json
 
 
 class Counter(BaseModel):
     id: int
     name: str
     site: str
-    # другие поля можно добавить при необходимости
 
 
 class CountersResponse(BaseModel):
@@ -32,10 +32,6 @@ class LogRequest(BaseModel):
     size: int
     parts: Optional[List[LogRequestPart]] = None
     attribution: str
-
-
-class LogRequestsResponse(BaseModel):
-    requests: List[LogRequest]
 
 
 class LogRequestEvaluation(BaseModel):
@@ -224,16 +220,28 @@ class MetrikaHitRow(BaseModel):
         "parsedParamsKey10",
         mode="before",
     )
-    def parse_json_array(cls, v):
+    @classmethod
+    def parse_string_to_list(cls, v):
+        """Преобразует строку, представляющую список, в реальный список Python."""
         if v is None or v == "":
             return None
+        if isinstance(v, list):
+            return v
         if isinstance(v, str):
-            # Пытаемся распарсить JSON-массив
+            # Убираем лишние пробелы
+            v = v.strip()
+            # Пробуем распарсить как Python-литерал (безопасно)
             try:
-                return json.loads(v)
-            except json.JSONDecodeError:
-                # Если не получилось, возможно это список через запятую? оставим как есть
-                return v
+                return ast.literal_eval(v)
+            except (SyntaxError, ValueError):
+                # Если не получилось, пробуем как JSON (например, если кавычки двойные)
+                try:
+                    return json.loads(v)
+                except json.JSONDecodeError:
+                    # Если ничего не помогло, возвращаем как есть (но тогда будет ошибка)
+                    # или можно попробовать разобрать вручную
+                    pass
+        # Если ничего не вышло, пусть Pydantic выдаст ошибку
         return v
 
     class Config:
