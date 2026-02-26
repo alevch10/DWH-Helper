@@ -138,7 +138,6 @@ jobs:
                   retries: 3
             END_COMPOSE
 
-            docker compose down --remove-orphans || true
             docker compose pull
             docker compose up -d --remove-orphans --force-recreate
 
