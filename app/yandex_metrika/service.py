@@ -1,3 +1,5 @@
+# app/yandex_metrika/service.py
+
 import asyncio
 import csv
 import io
@@ -6,7 +8,7 @@ import zipfile
 import os
 import shutil
 from pathlib import Path
-from typing import List
+from typing import Callable
 
 from fastapi import HTTPException
 
@@ -19,11 +21,11 @@ async def process_part_streaming(
     counter_id: int,
     request_id: int,
     part_number: int,
-    csv_writer,
-    clean_headers: List[str],
-):
+    process_line: Callable[[str], None],
+) -> None:
     """
-    Потоково обрабатывает одну часть: читает чанки, накапливает строки, парсит и пишет в CSV.
+    Потоково обрабатывает одну часть: читает чанки, накапливает строки,
+    передаёт каждую полную строку в process_line для фильтрации и записи.
     """
     buffer = b""
     async for chunk in client.download_part_stream(counter_id, request_id, part_number):
@@ -33,27 +35,12 @@ async def process_part_streaming(
             line = line_bytes.decode("utf-8")
             if not line.strip():
                 continue
-            # Используем csv.reader для корректного разбора TSV (учитывает кавычки)
-            reader = csv.reader([line], delimiter="\t")
-            try:
-                values = next(reader)
-            except StopIteration:
-                continue
-            if len(values) < len(clean_headers):
-                values.extend([""] * (len(clean_headers) - len(values)))
-            row_dict = dict(zip(clean_headers, values))
-            # Запись в CSV (синхронный writer)
-            csv_writer.writerow([row_dict.get(h) for h in clean_headers])
+            process_line(line)
     # Остаток буфера (последняя строка без завершающего \n)
     if buffer:
         line = buffer.decode("utf-8")
         if line.strip():
-            reader = csv.reader([line], delimiter="\t")
-            values = next(reader)
-            if len(values) < len(clean_headers):
-                values.extend([""] * (len(clean_headers) - len(values)))
-            row_dict = dict(zip(clean_headers, values))
-            csv_writer.writerow([row_dict.get(h) for h in clean_headers])
+            process_line(line)
 
 
 async def generate_report(
@@ -109,38 +96,49 @@ async def generate_report(
         temp_dir = tempfile.mkdtemp()
         csv_path = Path(temp_dir) / "report.csv"
 
-        # Используем синхронный open (не aiofiles) для совместимости с csv.writer
+        # Загружаем первую часть, чтобы получить заголовки
+        first_part_content = await client.download_part(counter_id, request_id, 0)
+        first_lines = first_part_content.decode("utf-8").splitlines()
+        if not first_lines:
+            raise HTTPException(status_code=500, detail="Первая часть логов пуста")
+
+        # Сохраняем исходную строку заголовков (с префиксами) для фильтрации повторных заголовков
+        header_line_raw = first_lines[0]
+        headers = header_line_raw.split("\t")
+        # Очищаем заголовки: убираем "ym:pv:", заменяем "from" на "from_"
+        clean_headers = [
+            h.replace("ym:pv:", "").replace("from", "from_") for h in headers
+        ]
+
+        # Функция для обработки одной строки: если это не заголовок, парсим и пишем в CSV
+        def process_line(line: str) -> None:
+            if line.strip() == header_line_raw:
+                return  # пропускаем повторяющиеся заголовки
+            reader = csv.reader([line], delimiter="\t")
+            try:
+                values = next(reader)
+            except StopIteration:
+                return
+            if len(values) < len(clean_headers):
+                values.extend([""] * (len(clean_headers) - len(values)))
+            row_dict = dict(zip(clean_headers, values))
+            writer.writerow([row_dict.get(h) for h in clean_headers])
+
+        # Открываем CSV-файл (синхронно) и пишем
         with open(csv_path, mode="w", newline="", encoding="utf-8") as csv_file:
             writer = csv.writer(csv_file, delimiter="\t")
-
-            # Заголовки берём из первой части
-            first_part_content = await client.download_part(counter_id, request_id, 0)
-            first_lines = first_part_content.decode("utf-8").splitlines()
-            if not first_lines:
-                raise HTTPException(status_code=500, detail="Первая часть логов пуста")
-            headers = first_lines[0].split("\t")
-            # Убираем префикс "ym:pv:" и заменяем "from" на "from_"
-            clean_headers = [
-                h.replace("ym:pv:", "").replace("from", "from_") for h in headers
-            ]
+            # Записываем заголовки (один раз)
             writer.writerow(clean_headers)
 
             # Обрабатываем остаток первой части (строки после заголовка)
             for line in first_lines[1:]:
-                if not line.strip():
-                    continue
-                reader = csv.reader([line], delimiter="\t")
-                values = next(reader)
-                if len(values) < len(clean_headers):
-                    values.extend([""] * (len(clean_headers) - len(values)))
-                row_dict = dict(zip(clean_headers, values))
-                writer.writerow([row_dict.get(h) for h in clean_headers])
+                process_line(line)
 
-            # Обрабатываем остальные части потоково
+            # Потоково обрабатываем остальные части
             for part in parts[1:]:
                 part_number = part["part_number"]
                 await process_part_streaming(
-                    client, counter_id, request_id, part_number, writer, clean_headers
+                    client, counter_id, request_id, part_number, process_line
                 )
 
         # 5. Создаём ZIP-архив в памяти
