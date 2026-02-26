@@ -70,7 +70,7 @@ jobs:
             echo "Logging in to GHCR"
             echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u ${{ github.repository_owner }} --password-stdin
 
-            TMP_DIR="/tmp/dwh-deploy-${{ github.ref_name }}"
+            TMP_DIR="$HOME/docker/dwh-deploy"
             mkdir -p "$TMP_DIR"
             cd "$TMP_DIR"
 
