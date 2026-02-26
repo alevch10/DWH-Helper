@@ -65,16 +65,21 @@ async def generate_report(
             lines = text.splitlines()
             if not lines:
                 continue
-            headers = lines[0].split("\t")
-            # Убираем префикс "ym:pv:" из заголовков для соответствия полям модели
-            clean_headers = [h.replace("ym:pv:", "") for h in headers]
-            # Заменяем "from" на "from_"
-            clean_headers = ["from_" if h == "from" else h for h in clean_headers]
 
+            # Первая строка — заголовки
+            headers = lines[0].split("\t")
+            clean_headers = [h.replace("ym:pv:", "").replace("from", "from_") for h in headers]
+
+            # Обрабатываем остальные строки с помощью csv.reader
             for line in lines[1:]:
                 if not line.strip():
                     continue
-                values = line.split("\t")
+                # Используем StringIO и csv.reader для корректного разбора TSV
+                reader = csv.reader(io.StringIO(line), delimiter='\t')
+                try:
+                    values = next(reader)
+                except StopIteration:
+                    continue
                 if len(values) < len(clean_headers):
                     values.extend([""] * (len(clean_headers) - len(values)))
                 row_dict = dict(zip(clean_headers, values))
