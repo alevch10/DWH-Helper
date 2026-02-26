@@ -4,7 +4,6 @@ Python приложение для работы с данными продукт
 
 Название: DWH Helper
 Описание: Приложение для работы с данными продуктовой аналитики. 
-Версия: 1.0.0
 Создатель: Андрей Левченко aa.levchenko@severmed.com
 
 ## Стек: 
@@ -65,6 +64,14 @@ app/
 │ ├── router.py            # Эндпоинты для работы с объектами S3
 │ └── init.py
 │
+├── yandex_metrika/        # Интеграция с Яндекс.Метрика
+│ ├── init.py
+│ ├── client.py            # Асинхронный клиент для Яндекс.Метрики
+│ ├── router.py            # Эндпоинты для работы с Яндекс.Метрикой
+│ ├── schemas.py           # Pydantic-модели
+│ ├── service.py           # Бизнес-логика
+│ └── init.py
+│
 └── main.py                # Точка входа: создание FastAPI, подключение роутеров
 ```
 
@@ -106,6 +113,13 @@ curl -OJ "http://localhost:8000/amplitude/export?start=20240201&end=20240207&sou
 GET /appmetrica/ping
 GET /appmetrica/export?skip_unavailable_shards=false&date_since=2026-02-12%2000%3A00%3A00&date_until=2026-02-12%2018%3A00%3A00&date_dimension=default&use_utf8_bom=true
 ```
+
+### YandexMetrica Integration (`/yandex_metrika`)
+
+Интеграция с сервисом [Яндекс.Метрика](https://metrika.yandex.ru/):
+- Позволяет выгружать сырые исторические данные. 
+- Отдает данные в формате файла, доступного для скачивания. 
+-- Скачивает данные по частям, накапливает в единый .csv файл и архивирует в .zip для загрузки.
 
 ### Auth
 

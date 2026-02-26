@@ -100,7 +100,11 @@ def process_source(source_type: SourceType, params: Dict[str, Any]) -> Dict[str,
 
         def flush():
             """Вставляет накопленные батчи в БД, используя только локальные кэши."""
-            nonlocal pending_permanent, pending_changeable, existing_permanent, last_change
+            nonlocal \
+                pending_permanent, \
+                pending_changeable, \
+                existing_permanent, \
+                last_change
 
             # --- Вставка permanent ---
             if pending_permanent:
@@ -117,7 +121,9 @@ def process_source(source_type: SourceType, params: Dict[str, Any]) -> Dict[str,
                         conflict_target="(ehr_id)",
                         returning_column="ehr_id",
                     )
-                    logger.info(f"Inserted {len(inserted_ids)} permanent records in {batches} batches")
+                    logger.info(
+                        f"Inserted {len(inserted_ids)} permanent records in {batches} batches"
+                    )
                     for eid in inserted_ids:
                         existing_permanent.add(int(eid))
                 pending_permanent.clear()
@@ -141,7 +147,9 @@ def process_source(source_type: SourceType, params: Dict[str, Any]) -> Dict[str,
                         rows=to_insert,
                         returning_column="uuid",
                     )
-                    logger.info(f"Inserted {len(inserted_ids)} changeable records in {batches} batches")
+                    logger.info(
+                        f"Inserted {len(inserted_ids)} changeable records in {batches} batches"
+                    )
                 pending_changeable.clear()
 
         try:
@@ -181,7 +189,10 @@ def process_source(source_type: SourceType, params: Dict[str, Any]) -> Dict[str,
 
                     processed_total += 1
 
-                    if len(pending_permanent) >= batch_size or len(pending_changeable) >= batch_size:
+                    if (
+                        len(pending_permanent) >= batch_size
+                        or len(pending_changeable) >= batch_size
+                    ):
                         flush()
 
                 flush()
@@ -212,7 +223,10 @@ def process_source(source_type: SourceType, params: Dict[str, Any]) -> Dict[str,
 
                     processed_total += 1
 
-                    if len(pending_permanent) >= batch_size or len(pending_changeable) >= batch_size:
+                    if (
+                        len(pending_permanent) >= batch_size
+                        or len(pending_changeable) >= batch_size
+                    ):
                         flush()
                         if batch_uuids:
                             repo.update_migrated_batch(batch_uuids, migrated=True)
@@ -257,7 +271,7 @@ def process_source(source_type: SourceType, params: Dict[str, Any]) -> Dict[str,
                 day_date=datetime.now(),
                 rows_or_lines=lines[start_after_idx:],
                 source_type="amplitude",
-                file_key=prefix
+                file_key=prefix,
             )
             logger.info(f"Amplitude ETL finished. Total processed: {processed_total}")
 
@@ -285,14 +299,14 @@ def process_source(source_type: SourceType, params: Dict[str, Any]) -> Dict[str,
                     break
 
                 process_day(
-                    day_date=current_day,
-                    rows_or_lines=rows,
-                    source_type="tmp_table"
+                    day_date=current_day, rows_or_lines=rows, source_type="tmp_table"
                 )
 
                 current_day = next_day
 
-            logger.info(f"Tmp_table ETL finished. Total processed: {processed_total}, Total errors: {errors_total}")
+            logger.info(
+                f"Tmp_table ETL finished. Total processed: {processed_total}, Total errors: {errors_total}"
+            )
 
         return {
             "status": "completed",
@@ -310,11 +324,17 @@ def process_source(source_type: SourceType, params: Dict[str, Any]) -> Dict[str,
             "error_message": pie.message,
         }
         if source_type == "amplitude":
-            response.update({
-                "last_successful_line": str(pie.last_successful_line) if pie.last_successful_line is not None else None,
-                "failed_line": str(pie.failed_line) if pie.failed_line is not None else None,
-                "file_key": pie.file_key,
-            })
+            response.update(
+                {
+                    "last_successful_line": str(pie.last_successful_line)
+                    if pie.last_successful_line is not None
+                    else None,
+                    "failed_line": str(pie.failed_line)
+                    if pie.failed_line is not None
+                    else None,
+                    "file_key": pie.file_key,
+                }
+            )
         raise HTTPException(status_code=200, detail=response)
 
     except Exception as e:

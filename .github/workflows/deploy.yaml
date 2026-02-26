@@ -115,6 +115,8 @@ jobs:
             YANDEX_CLIENT_SECRET="${{ secrets.YANDEX_CLIENT_SECRET }}"
 
             ETL_BATCH_SIZE="${{ vars.ETL_BATCH_SIZE }}"
+
+            YANDEXMETRICA_BASE_URL="${{ vars.YANDEXMETRICA_BASE_URL }}"
             END_ENV
 
             cat > docker-compose.yml <<'END_COMPOSE'
