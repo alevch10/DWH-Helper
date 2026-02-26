@@ -1,8 +1,7 @@
-# app/yandex_metrika/schemas.py
-
 import ast
 import json
-from pydantic import BaseModel, Field, field_validator, BeforeValidator
+
+from pydantic import BaseModel, field_validator, BeforeValidator
 from typing import List, Optional, Annotated
 from datetime import date, datetime
 

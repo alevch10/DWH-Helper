@@ -3,7 +3,7 @@ import io
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
-from app.auth.deps import require_read, require_write
+from app.auth.deps import require_read
 from .client import MetrikaClient
 from . import schemas
 from .service import generate_report
@@ -245,7 +245,6 @@ async def prepare_report(
             date2=date2,
             source=source,
             fields=fields,
-            return_as_zip=True,
         )
         return StreamingResponse(
             io.BytesIO(zip_data),

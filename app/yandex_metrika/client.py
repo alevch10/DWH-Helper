@@ -1,7 +1,7 @@
-# app/metrika/client.py
 import httpx
+
 from typing import Optional, Dict, Any
-from urllib.parse import urljoin
+
 from ..config.settings import settings
 
 
@@ -70,3 +70,15 @@ class MetrikaClient:
         resp = await self.client.get(path)
         resp.raise_for_status()
         return resp.content
+
+    async def download_part_stream(
+        self, counter_id: int, request_id: int, part_number: int
+    ):
+        """Возвращает асинхронный итератор байтов для скачивания части."""
+        path = (
+            f"counter/{counter_id}/logrequest/{request_id}/part/{part_number}/download"
+        )
+        async with self.client.stream("GET", path) as response:
+            response.raise_for_status()
+            async for chunk in response.aiter_bytes():
+                yield chunk
