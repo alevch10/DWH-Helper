@@ -94,7 +94,7 @@ async def create_logrequest(
     source: str = Query("hits"),
     fields: str = Query(DEFAULT_FIELDS, description="Список полей через запятую"),
     token: str = Depends(get_token_from_header),
-    user=Depends(require_write),
+    user=Depends(require_read),
 ):
     """Создать запрос логов"""
     client = MetrikaClient(token)
@@ -174,7 +174,7 @@ async def clean_logrequest(
     counter_id: int = Query(...),
     request_id: int = ...,
     token: str = Depends(get_token_from_header),
-    user=Depends(require_write),
+    user=Depends(require_read),
 ):
     """Очистить подготовленные логи обработанного запроса"""
     client = MetrikaClient(token)
@@ -193,7 +193,7 @@ async def cancel_logrequest(
     counter_id: int = Query(...),
     request_id: int = ...,
     token: str = Depends(get_token_from_header),
-    user=Depends(require_write),
+    user=Depends(require_read),
 ):
     """Отменить не обработанный запрос логов"""
     client = MetrikaClient(token)
@@ -241,7 +241,7 @@ async def prepare_report(
     source: str = Query("hits"),
     fields: str = Query(DEFAULT_FIELDS, description="Список полей через запятую"),
     token: str = Depends(get_token_from_header),
-    user=Depends(require_write),
+    user=Depends(require_read),
 ):
     """
     Подготавливает единый отчет: создает запрос, ожидает обработки, скачивает все части,
