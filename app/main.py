@@ -8,6 +8,7 @@ from app.appmetrica.router import router as appmetrica_router
 from app.s3.router import router as s3_router
 from app.amplitude.router import router as amplitude_router
 from app.etl.router import router as etl_router
+from app.yandex_metrika.router import router as yandex_metrika_router
 from app.db.repository import close_repository
 
 configure_logging(level=settings.logging.level)
@@ -36,9 +37,12 @@ async def root():
 
 app.include_router(amplitude_router, prefix="/amplitude", tags=["Amplitude"])
 app.include_router(appmetrica_router, prefix="/appmetrica", tags=["AppMetrica"])
+app.include_router(
+    yandex_metrika_router, prefix="/yandex_metrika", tags=["Yandex.Metrika"]
+)
+app.include_router(etl_router, prefix="/etl", tags=["ETL"])
 app.include_router(db_router, prefix="/db", tags=["DB"])
 app.include_router(s3_router, prefix="/s3", tags=["S3"])
-app.include_router(etl_router, prefix="/etl", tags=["ETL"])
 
 
 @app.on_event("shutdown")

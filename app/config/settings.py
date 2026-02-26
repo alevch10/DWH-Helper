@@ -33,6 +33,12 @@ class YandexOAuthSettings(BaseModel):
     client_secret: str
 
 
+class YandexMetricaSettings(BaseModel):
+    """Yandex.Metrica integration settings."""
+
+    base_url: str
+
+
 class S3Settings(BaseModel):
     """AWS S3 storage settings."""
 
@@ -83,6 +89,7 @@ class Settings(BaseSettings):
 
     db: DBSettings
     appmetrica: AppMetricaSettings
+    yandexmetrica: YandexMetricaSettings
     s3: S3Settings
     logging: LoggingSettings
     amplitude: AmplitudeSettings
