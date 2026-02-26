@@ -65,7 +65,7 @@ deploy:
     - ssh -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "
         cd $APP_PATH &&
         docker compose pull &&
-        docker compose up -d --remove-orphans --force-recreate &&
+        docker compose up -d --remove-orphans &&
         docker compose ps &&
         docker compose logs --tail=30
       "
