@@ -146,6 +146,11 @@ async def generate_report(
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
             zf.write(csv_path, arcname="report.csv")
         zip_buffer.seek(0)
+        try:
+            await client.clean_logrequest(counter_id, request_id)
+        except Exception as e:
+            print(f"Не удалось удалить запрос логов {request_id}: {e}")
+
         return zip_buffer.getvalue()
 
     finally:
