@@ -86,7 +86,7 @@ class MetrikaHitRow(BaseModel):
     UTMSource: Optional[str] = None
     UTMTerm: Optional[str] = None
     operatingSystem: Optional[str] = None
-    hasGCLID: Optional[int] = None
+    hasGCLID: Optional[bool] = None
     GCLID: Optional[str] = None
     lastTrafficSource: Optional[str] = None
     lastSearchEngineRoot: Optional[str] = None
@@ -106,10 +106,9 @@ class MetrikaHitRow(BaseModel):
     browserEngineVersion3: Optional[int] = None
     browserEngineVersion4: Optional[int] = None
     browserLanguage: Optional[str] = None
-    clientTimeZone: Optional[int] = None
-    cookieEnabled: Optional[int] = None
+    cookieEnabled: Optional[bool] = None
     deviceCategory: Optional[str] = None
-    javascriptEnabled: Optional[int] = None
+    javascriptEnabled: Optional[bool] = None
     mobilePhone: Optional[str] = None
     mobilePhoneModel: Optional[str] = None
     operatingSystemRoot: Optional[str] = None
@@ -126,13 +125,13 @@ class MetrikaHitRow(BaseModel):
     ipAddress: Optional[str] = None
     regionCity: Optional[str] = None
     regionCountry: Optional[str] = None
-    isPageView: Optional[int] = None
+    isPageView: Optional[bool] = None
     isTurboApp: Optional[int] = None
-    iFrame: Optional[int] = None
-    link: Optional[int] = None
-    download: Optional[int] = None
-    notBounce: Optional[int] = None
-    artificial: Optional[int] = None
+    iFrame: Optional[bool] = None
+    link: Optional[bool] = None
+    download: Optional[bool] = None
+    notBounce: Optional[bool] = None
+    artificial: Optional[bool] = None
     promotionID: Optional[List[str]] = None
     promotionName: Optional[List[str]] = None
     promotionCreative: Optional[List[str]] = None
@@ -152,7 +151,7 @@ class MetrikaHitRow(BaseModel):
     shareService: Optional[str] = None
     shareURL: Optional[str] = None
     shareTitle: Optional[str] = None
-    hasSBCLID: Optional[int] = None
+    hasSBCLID: Optional[bool] = None
     SBCLID: Optional[str] = None
 
     @field_validator(
