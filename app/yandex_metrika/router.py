@@ -13,7 +13,7 @@ router = APIRouter()
 # Дефолтный набор полей из задания
 DEFAULT_FIELDS = (
     "ym:pv:watchID,ym:pv:pageViewID,ym:pv:visitID,ym:pv:counterID,ym:pv:clientID,"
-    "ym:pv:counterUserIDHash,ym:pv:dateTime,ym:pv:title,ym:pv:pageCharset,"
+    "ym:pv:counterUserIDHash,ym:pv:dateTime,ym:pv:title,"
     "ym:pv:goalsID,ym:pv:URL,ym:pv:referer,ym:pv:UTMContent,"
     "ym:pv:UTMMedium,ym:pv:UTMSource,ym:pv:UTMTerm,ym:pv:operatingSystem,"
     "ym:pv:hasGCLID,ym:pv:GCLID,ym:pv:lastTrafficSource,ym:pv:lastSearchEngineRoot,"
@@ -21,7 +21,7 @@ DEFAULT_FIELDS = (
     "ym:pv:lastSocialNetworkProfile,ym:pv:recommendationSystem,ym:pv:messenger,ym:pv:browser,"
     "ym:pv:browserMajorVersion,ym:pv:browserMinorVersion,ym:pv:browserCountry,ym:pv:browserEngine,"
     "ym:pv:browserEngineVersion1,ym:pv:browserEngineVersion2,ym:pv:browserEngineVersion3,"
-    "ym:pv:browserEngineVersion4,ym:pv:browserLanguage,ym:pv:clientTimeZone,ym:pv:cookieEnabled,"
+    "ym:pv:browserEngineVersion4,ym:pv:browserLanguage,ym:pv:cookieEnabled,"
     "ym:pv:deviceCategory,ym:pv:javascriptEnabled,ym:pv:mobilePhone,ym:pv:mobilePhoneModel,"
     "ym:pv:operatingSystemRoot,ym:pv:physicalScreenHeight,ym:pv:physicalScreenWidth,"
     "ym:pv:screenColors,ym:pv:screenFormat,ym:pv:screenHeight,ym:pv:screenOrientation,"
