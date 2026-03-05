@@ -260,21 +260,92 @@ def get_page_transitions(ym_raw_data: List[MetrikaHitRow]) -> List[PageTransitio
     return transitions
 
 
+def _get_source_label(first_hit: MetrikaHitRow) -> str:
+    """
+    Формирует метку источника для первого визита на основе last_traffic_source и других полей.
+    Использует match-case для улучшения читаемости.
+    """
+    ts = first_hit.last_traffic_source
+    if not ts:
+        return "(start)"
+
+    # Приводим к нижнему регистру для единообразия
+    ts_lower = ts.lower()
+
+    match ts_lower:
+        case "organic":
+            if first_hit.last_search_engine:
+                return f"organic_{first_hit.last_search_engine}"
+            return "organic"
+
+        case "direct":
+            return "direct"
+
+        case "referral":
+            if first_hit.utm_source is not None:
+                if first_hit.utm_content:
+                    return f"referral_{first_hit.utm_content}"
+                return "referral"
+            else:
+                if first_hit.referer:
+                    return f"referral_{first_hit.referer}"
+                return "referral"
+
+        case "ad":
+            if first_hit.utm_source:
+                return f"ad_{first_hit.utm_source}"
+            return "ad"
+
+        case "social":
+            if first_hit.utm_source:
+                return f"social_{first_hit.utm_source}"
+            if first_hit.last_social_network:
+                return f"social_{first_hit.last_social_network}"
+            return "social"
+
+        case "internal":
+            return f"{first_hit.referer}"
+
+        case "messenger":
+            if first_hit.utm_term:
+                return f"messenger_{first_hit.utm_term}"
+            return "messenger"
+
+        case "qrcode":
+            if first_hit.utm_content:
+                return f"qrcode_{first_hit.utm_content}"
+            return "qrcode"
+
+        case "recommend":
+            if first_hit.recommendation_system:
+                return f"recommend_{first_hit.recommendation_system}"
+            return "recommend"
+
+        case "saved":
+            return "saved"
+
+        case "undefined":
+            return "undefined"
+
+        case _:
+            return ts
+
+
 def _process_visit_pages(
     visit_id: int, pages: List[str], first_hit: MetrikaHitRow
 ) -> List[PageTransition]:
-    """Преобразует список страниц визита в переходы, включая вход."""
     if len(pages) == 0:
         return []
     result = []
     client_id = first_hit.client_id
     visit_date = first_hit.date_time.date()
+    source_label = _get_source_label(first_hit)
     result.append(
         PageTransition(
             visit_id=visit_id,
             client_id=client_id,
             transition_date=visit_date,
-            source="(start)",
+            source=source_label,
             target=pages[0],
             sequence_num=1,
         )
@@ -338,6 +409,8 @@ async def get_ad_efficiency(
     repository.insert_batch(
         table="yandex_metrika.ym_booking_visits",
         rows=[bv.model_dump(exclude_none=False) for bv in ym_booking_visits],
+        on_conflict="DO NOTHING",
+        conflict_target="(visit_id)",
     )
     statistics["ym_booking_visits"] = len(ym_booking_visits)
 
