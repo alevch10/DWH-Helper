@@ -317,3 +317,9 @@ poetry install
 cp .env.example .env # Отредактируйте .env под свои ключи и параметры
 poetry run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
+
+### Локально в docker:
+
+```bash
+docker compose -f docker-compose.local.yml up -d --build
+```
