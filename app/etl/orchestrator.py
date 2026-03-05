@@ -9,7 +9,7 @@ from app.db.schemas import (
     PermanentUserProperties,
     ChangeableUserProperties,
 )
-from app.db.repository import get_repository, DBRepository
+from app.db.repository import get_repository
 from app.config.settings import settings
 from app.config.logger import get_logger
 

@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import BaseModel, Field, field_validator
 
@@ -37,6 +39,40 @@ class YandexMetricaSettings(BaseModel):
     """Yandex.Metrica integration settings."""
 
     base_url: str
+    default_fields: str
+    booking_domain: str
+    target_netloc: str = Field(description="Список netloc через запятую")
+    target_path: str = Field(description="Список путей через запятую")
+    target_scheme: Optional[str] = Field(
+        default="", description="Список схем через запятую"
+    )
+    target_params: Optional[str] = Field(
+        default="", description="Список параметров через запятую"
+    )
+    target_query: Optional[str] = Field(
+        default="", description="Список query-параметров через запятую"
+    )
+    target_fragment: Optional[str] = Field(
+        default="", description="Список фрагментов через запятую"
+    )
+
+    def get_target_netloc_list(self) -> list[str]:
+        return [x.strip() for x in self.target_netloc.split(",") if x.strip()]
+
+    def get_target_path_list(self) -> list[str]:
+        return [x.strip() for x in self.target_path.split(",") if x.strip()]
+
+    def get_target_scheme_list(self) -> list[str]:
+        return [x.strip() for x in self.target_scheme.split(",") if x.strip()]
+
+    def get_target_params_list(self) -> list[str]:
+        return [x.strip() for x in self.target_params.split(",") if x.strip()]
+
+    def get_target_query_list(self) -> list[str]:
+        return [x.strip() for x in self.target_query.split(",") if x.strip()]
+
+    def get_target_fragment_list(self) -> list[str]:
+        return [x.strip() for x in self.target_fragment.split(",") if x.strip()]
 
 
 class S3Settings(BaseModel):
@@ -95,10 +131,17 @@ class Settings(BaseSettings):
     amplitude: AmplitudeSettings
     yandex: YandexOAuthSettings
     etl: ETLSettings
-    read_access: str = Field(default="", validation_alias="AUTH_READ_ACCESS")
-    write_access: str = Field(default="", validation_alias="AUTH_WRITE_ACCESS")
+    read_access: str = Field(validation_alias="AUTH_READ_ACCESS")
+    write_access: str = Field(validation_alias="AUTH_WRITE_ACCESS")
+    params_to_remove: str = Field(validation_alias="ETL_QUERY_PARAMS_TO_REMOVE")
 
-    @field_validator("read_access", "write_access", mode="after")
+    @field_validator(
+        "read_access",
+        "write_access",
+        "parrams_to_remove",
+        mode="after",
+        check_fields=False,
+    )
     @classmethod
     def parse_access_lists(cls, v):
         """Ensure read_access and write_access are strings (will parse on access)."""
@@ -115,6 +158,11 @@ class Settings(BaseSettings):
         if not self.write_access:
             return []
         return [x.strip() for x in self.write_access.split(",") if x.strip()]
+
+    def get_query_params_to_remove(self) -> list[str]:
+        if not self.params_to_remove:
+            return []
+        return [x.strip() for x in self.params_to_remove.split(",") if x.strip()]
 
 
 settings = Settings()

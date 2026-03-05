@@ -4,38 +4,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
 from app.auth.deps import require_read
+from app.config.settings import settings
 from .client import MetrikaClient
 from . import schemas
-from .service import generate_report
+from .services import generate_report
+from .ad_efficiency import get_ad_efficiency
 
 router = APIRouter()
-
-# Дефолтный набор полей из задания
-DEFAULT_FIELDS = (
-    "ym:pv:watchID,ym:pv:pageViewID,ym:pv:visitID,ym:pv:counterID,ym:pv:clientID,"
-    "ym:pv:counterUserIDHash,ym:pv:dateTime,ym:pv:title,"
-    "ym:pv:goalsID,ym:pv:URL,ym:pv:referer,ym:pv:UTMContent,"
-    "ym:pv:UTMMedium,ym:pv:UTMSource,ym:pv:UTMTerm,ym:pv:operatingSystem,"
-    "ym:pv:hasGCLID,ym:pv:GCLID,ym:pv:lastTrafficSource,ym:pv:lastSearchEngineRoot,"
-    "ym:pv:lastSearchEngine,ym:pv:lastAdvEngine,ym:pv:lastSocialNetwork,"
-    "ym:pv:lastSocialNetworkProfile,ym:pv:recommendationSystem,ym:pv:messenger,ym:pv:browser,"
-    "ym:pv:browserMajorVersion,ym:pv:browserMinorVersion,ym:pv:browserCountry,ym:pv:browserEngine,"
-    "ym:pv:browserEngineVersion1,ym:pv:browserEngineVersion2,ym:pv:browserEngineVersion3,"
-    "ym:pv:browserEngineVersion4,ym:pv:browserLanguage,ym:pv:cookieEnabled,"
-    "ym:pv:deviceCategory,ym:pv:javascriptEnabled,ym:pv:mobilePhone,ym:pv:mobilePhoneModel,"
-    "ym:pv:operatingSystemRoot,ym:pv:physicalScreenHeight,ym:pv:physicalScreenWidth,"
-    "ym:pv:screenColors,ym:pv:screenFormat,ym:pv:screenHeight,ym:pv:screenOrientation,"
-    "ym:pv:screenOrientationName,ym:pv:screenWidth,ym:pv:windowClientHeight,ym:pv:windowClientWidth,"
-    "ym:pv:ipAddress,ym:pv:regionCity,ym:pv:regionCountry,"
-    "ym:pv:isPageView,ym:pv:iFrame,ym:pv:link,ym:pv:download,"
-    "ym:pv:notBounce,ym:pv:artificial,ym:pv:promotionName,ym:pv:promotionCreative,ym:pv:promotionPosition,"
-    "ym:pv:promotionCreativeSlot,ym:pv:promotionEventType,"
-    "ym:pv:offlineCallTalkDuration,ym:pv:offlineCallHoldDuration,ym:pv:offlineCallMissed,"
-    "ym:pv:offlineCallTag,ym:pv:offlineCallFirstTimeCaller,ym:pv:offlineCallURL,"
-    "ym:pv:offlineUploadingID,ym:pv:params,"
-    "ym:pv:httpError,ym:pv:networkType,ym:pv:shareService,ym:pv:shareURL,ym:pv:shareTitle,"
-    "ym:pv:hasSBCLID,ym:pv:SBCLID"
-)
 
 
 def get_token_from_header(request: Request) -> str:
@@ -82,7 +57,9 @@ async def create_logrequest(
     date1: str = Query(...),
     date2: str = Query(...),
     source: str = Query("hits"),
-    fields: str = Query(DEFAULT_FIELDS, description="Список полей через запятую"),
+    fields: str = Query(
+        settings.yandexmetrica.default_fields, description="Список полей через запятую"
+    ),
     token: str = Depends(get_token_from_header),
     user=Depends(require_read),
 ):
@@ -122,7 +99,9 @@ async def evaluate_logrequest(
     date1: str = Query(...),
     date2: str = Query(...),
     source: str = Query("hits"),
-    fields: str = Query(DEFAULT_FIELDS, description="Список полей через запятую"),
+    fields: str = Query(
+        settings.yandexmetrica.default_fields, description="Список полей через запятую"
+    ),
     token: str = Depends(get_token_from_header),
     user=Depends(require_read),
 ):
@@ -229,7 +208,9 @@ async def prepare_report(
     date1: str = Query(...),
     date2: str = Query(...),
     source: str = Query("hits"),
-    fields: str = Query(DEFAULT_FIELDS, description="Список полей через запятую"),
+    fields: str = Query(
+        settings.yandexmetrica.default_fields, description="Список полей через запятую"
+    ),
     token: str = Depends(get_token_from_header),
     user=Depends(require_read),
 ):
@@ -257,3 +238,32 @@ async def prepare_report(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/ad_efficiency", response_model=schemas.ProcessDayResponse)
+async def ad_efficiency(
+    request: schemas.ProcessDayRequest,
+    token: str = Depends(get_token_from_header),
+    user=Depends(require_read),
+):
+    """
+    Запускает ETL-процесс для указанного дня.
+    Возвращает количество записей в каждой витрине после обработки.
+    """
+    try:
+        # Если fields не передан, используем значение по умолчанию из настроек
+        fields_to_use = request.fields or settings.yandexmetrica.default_fields.split(
+            ","
+        )
+        statistics = await get_ad_efficiency(
+            token=token,
+            counter_id=request.counter_id,
+            date=request.date,
+            source=request.source,
+            fields=fields_to_use,
+        )
+        return schemas.ProcessDayResponse(
+            status="success", statistics=statistics, message="Данные успешно обработаны"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Ошибка обработки: {str(e)}")

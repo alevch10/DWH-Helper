@@ -1,0 +1,63 @@
+# Описание
+Данный модуль работает с таблицами базы данных DWH. Он должен подключаться к БД, используя переменные из config 
+Модуль должен уметь считывать данные из таблиц БД и записывать новые строки в них. 
+У модуля должно быть собственно API, которое позволяет делать GET и POST запрос для каждой таблицы, а также, другие модули будут делать select и insert запросы в эти таблицы. 
+
+## 🧩 Прямое использование (из других модулей)
+
+```python
+from app.dwh_tables_worker.repository import DWHRepository
+
+repo = DWHRepository()
+
+# Получить все ehr_id
+ehr_set = repo.get_all_permanent_ehr_ids()
+
+# Получить последние изменяемые свойства для списка ehr_id
+latest = repo.get_latest_changeable_for_ehrs([1, 2, None])
+
+# UPSERT изменяемого свойства
+from app.dwh_tables_worker.schemas import ChangeableUserProperties
+record = ChangeableUserProperties(...)
+repo.upsert_changeable(record)
+
+# Пометить строки tmp_user_properties как migrated
+from uuid import UUID
+repo.update_migrated_tmp(UUID("..."), migrated=True)
+```
+
+
+## Таблицы и их описание: 
+Все таблицы соответствую схемам в dwh_tables_worker.schemas
+
+# ✅ Чек-лист выполненных требований (для ИИ-агентов)
+## Общие
+- Модуль подключается к PostgreSQL через переменные из config.settings.
+- Реализован пул соединений (ThreadedConnectionPool).
+- Все SQL-запросы используют параметризацию, защита от инъекций.
+- Транзакции: автокоммит после каждого запроса (поведение как в старом DBClass).
+
+## API (router)
+- Для каждой из 8 таблиц есть POST и GET эндпоинты.
+- GET поддерживает фильтр по первичному ключу (pk).
+- GET поддерживает limit, sort_by, sort_dir.
+- GET для /user-properties дополнительно фильтрует по migrated.
+- POST принимает батч объектов, автоматически чанкует.
+- POST возвращает список вставленных первичных ключей (inserted_ids).
+- POST возвращает реальное количество батчей (batches).
+
+## Схемы (schemas)
+- Все таблицы описаны Pydantic-моделями.
+- Поля event_time имеют тип datetime (строгая валидация ISO 8601).
+- Невалидные даты вызывают HTTP 422, никакой автоматической замены.
+- Использованы @field_validator(mode='before') для преобразования строк.
+
+## Репозиторий (repository)
+- Общие методы: insert_one, insert_batch, select, get_by_pk.
+- insert_batch автоматически разбивает данные по протокольному лимиту PostgreSQL (65 535 параметров).
+- Динамический расчёт max_rows на основе количества полей в модели.
+- RETURNING для получения ID вставленных записей.
+- Подсчёт батчей и возврат вместе с ID.
+- Поддержка ON CONFLICT (DO NOTHING / DO UPDATE).
+- Специфические методы: get_all_permanent_ehr_ids, get_latest_changeable_for_ehrs, upsert_changeable, update_migrated_tmp — полностью сохранены из DBClass.
+
