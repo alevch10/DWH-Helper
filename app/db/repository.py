@@ -8,7 +8,7 @@ from psycopg2.extras import register_uuid
 
 from app.config.settings import settings
 from app.config.logger import get_logger
-from app.db import schemas
+from app.db import schemas as db_schemas
 
 logger = get_logger(__name__)
 register_uuid()
@@ -21,14 +21,24 @@ class DBRepository:
     """
 
     TABLE_MODEL_MAP = {
-        "events_part": schemas.EventsPart,
-        "mobile_devices": schemas.MobileDevices,
-        "permanent_user_properties": schemas.PermanentUserProperties,
-        "technical_data": schemas.TechnicalData,
-        "tmp_event_properties": schemas.TmpEventProperties,
-        "tmp_user_properties": schemas.TmpUserProperties,
-        "user_locations": schemas.UserLocations,
-        "changeable_user_properties": schemas.ChangeableUserProperties,
+        # Amplitude data
+        "events_part": db_schemas.EventsPart,
+        "mobile_devices": db_schemas.MobileDevices,
+        "permanent_user_properties": db_schemas.PermanentUserProperties,
+        "technical_data": db_schemas.TechnicalData,
+        "tmp_event_properties": db_schemas.TmpEventProperties,
+        "tmp_user_properties": db_schemas.TmpUserProperties,
+        "user_locations": db_schemas.UserLocations,
+        "changeable_user_properties": db_schemas.ChangeableUserProperties,
+        # Yandex Metrika data – храним имена классов для отложенного импорта
+        "yandex_metrika.ym_raw_data": "MetrikaHitRow",
+        "yandex_metrika.ym_ad_data": "MetricaAdData",
+        "yandex_metrika.ym_successful_entries": "MetrikaSuccessfulEntries",
+        "yandex_metrika.ym_booking_visits": "BookingVisit",
+        "yandex_metrika.ym_booking_transitions": "BookingTransition",
+        "yandex_metrika.ym_user_paths": "UserPath",
+        "yandex_metrika.ym_call_data": "CallData",
+        "yandex_metrika.ym_page_transitions": "PageTransition",
     }
 
     def __init__(self):
@@ -46,8 +56,29 @@ class DBRepository:
         self._precompute_column_counts()
         logger.info(f"DBRepository initialized. Column counts: {self._column_counts}")
 
+    def _get_model_class(self, table: str):
+        """
+        Возвращает класс Pydantic-модели для указанной таблицы.
+        Для таблиц Яндекс.Метрики выполняет отложенный импорт.
+        """
+        model = self.TABLE_MODEL_MAP.get(table)
+        if model is None:
+            raise ValueError(f"No model mapped for table {table}")
+
+        if isinstance(model, str):
+            from app.yandex_metrika import schemas as ym_schemas
+
+            model_class = getattr(ym_schemas, model)
+            self.TABLE_MODEL_MAP[table] = model_class
+            return model_class
+        return model
+
     def _precompute_column_counts(self):
-        for table_name, model_class in self.TABLE_MODEL_MAP.items():
+        for table_name, model in self.TABLE_MODEL_MAP.items():
+            if isinstance(model, str):
+                model_class = self._get_model_class(table_name)
+            else:
+                model_class = model
             self._column_counts[table_name] = len(model_class.model_fields)
 
     def _max_rows_for_table(self, table_name: str) -> int:
@@ -63,7 +94,6 @@ class DBRepository:
         theoretical_max = settings.db.max_params_per_query // col_count
         safe_max = int(theoretical_max * settings.db.safety_factor)
 
-        # Если настройка max_rows_per_insert не задана, используем значение по умолчанию
         configured_max = getattr(settings.db, "max_rows_per_insert", 10000)
         if not hasattr(settings.db, "max_rows_per_insert"):
             logger.warning(
@@ -140,7 +170,7 @@ class DBRepository:
         self.execute(query_str, tuple(values))
         logger.info("insert_one finished")
 
-    def insert_permanent(self, record: schemas.PermanentUserProperties) -> None:
+    def insert_permanent(self, record: db_schemas.PermanentUserProperties) -> None:
         """Вставка или игнорирование записи в permanent_user_properties (ON CONFLICT DO NOTHING)."""
         data = record.model_dump()
         self.insert_one(
@@ -221,7 +251,6 @@ class DBRepository:
                 cur.execute(query, params)
                 if returning_column:
                     rows = cur.fetchall()
-                    # Исправление: берём значение по имени колонки
                     inserted_ids = [str(row[returning_column]) for row in rows]
                 else:
                     inserted_ids = []
@@ -234,9 +263,7 @@ class DBRepository:
         self,
         table: str,
         where: Optional[Dict[str, Any]] = None,
-        where_conditions: Optional[
-            List[Tuple[str, str, Any]]
-        ] = None,  # (колонка, оператор, значение)
+        where_conditions: Optional[List[Tuple[str, str, Any]]] = None,
         order_by: Optional[List[str]] = None,
         limit: Optional[int] = None,
         offset: Optional[int] = None,
@@ -314,7 +341,7 @@ class DBRepository:
 
     def get_latest_changeable_for_ehrs(
         self, ehr_ids: List[Optional[int]]
-    ) -> Dict[Optional[int], schemas.ChangeableUserProperties]:
+    ) -> Dict[Optional[int], db_schemas.ChangeableUserProperties]:
         if not ehr_ids:
             return {}
 
@@ -338,7 +365,7 @@ class DBRepository:
             rows = self.execute(query, tuple(non_null))
             for row in rows:
                 row.pop("rn", None)
-                result[row["ehr_id"]] = schemas.ChangeableUserProperties(**row)
+                result[row["ehr_id"]] = db_schemas.ChangeableUserProperties(**row)
 
         if has_null:
             query = """
@@ -350,11 +377,11 @@ class DBRepository:
             """
             row = self.execute(query)
             if row:
-                result[None] = schemas.ChangeableUserProperties(**row[0])
+                result[None] = db_schemas.ChangeableUserProperties(**row[0])
         logger.info(f"Fetched {len(result)} latest changeable records")
         return result
 
-    def insert_changeable(self, record: schemas.ChangeableUserProperties) -> None:
+    def insert_changeable(self, record: db_schemas.ChangeableUserProperties) -> None:
         """Вставить новую запись в changeable_user_properties (история изменений)."""
         if record.ehr_id is None:
             logger.debug(

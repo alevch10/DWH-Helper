@@ -1,5 +1,4 @@
 # Byte-compiled / optimized / DLL files
-ai_docs/
 .github/
 .github-ci.yml
 .dockerignore
