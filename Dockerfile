@@ -1,38 +1,43 @@
 # syntax=docker/dockerfile:1
 
-FROM python:3.13-slim
+FROM python:3.13-alpine AS builder
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+# Устанавливаем зависимости для компиляции
+RUN apk add --no-cache \
+    build-base \
+    postgresql-dev \
+    python3-dev \
+    curl
 
-# Install Poetry
-RUN curl -sSL https://install.python-poetry.org | python3 - && \
-    ln -s /root/.local/bin/poetry /usr/local/bin/poetry
+# Устанавливаем Poetry
+RUN pip install --no-cache-dir poetry
 
-# Copy only requirements for dependency install
 COPY pyproject.toml poetry.lock ./
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    python3-dev \
-    libpq-dev \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install dependencies (no dev)
+# Устанавливаем зависимости (компилируем)
 RUN poetry config virtualenvs.create false \
-    && poetry install --no-interaction --no-ansi --no-root 
+    && poetry install --no-interaction --no-ansi --no-root
 
-# Copy app code
+# ------ ВТОРОЙ ЭТАП: финальный образ ------
+FROM python:3.13-alpine
+
+WORKDIR /app
+
+# Устанавливаем ТОЛЬКО runtime-зависимости
+# (библиотеки, нужные для работы, без компиляторов)
+RUN apk add --no-cache \
+    libpq \
+    curl
+
+# Копируем установленные пакеты из builder
+COPY --from=builder /usr/local/lib/python3.13/site-packages/ /usr/local/lib/python3.13/site-packages/
+COPY --from=builder /usr/local/bin/ /usr/local/bin/
+
+# Копируем код приложения
 COPY . .
 
-# Expose port
 EXPOSE 8000
 
-# Entrypoint
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]

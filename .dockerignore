@@ -19,7 +19,7 @@ venv/
 
 # Environment
 .env
-
+docker-compose.local.yml
 
 # Editor directories and files
 .vscode/
