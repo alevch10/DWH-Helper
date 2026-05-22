@@ -9,6 +9,7 @@ from app.s3.router import router as s3_router
 from app.amplitude.router import router as amplitude_router
 from app.etl.router import router as etl_router
 from app.yandex_metrika.router import router as yandex_metrika_router
+from app.data_scout.router import router as data_scout_router
 from app.db.repository import close_repository
 
 configure_logging(level=settings.logging.level)
@@ -43,6 +44,7 @@ app.include_router(
 app.include_router(etl_router, prefix="/etl", tags=["ETL"])
 app.include_router(db_router, prefix="/db", tags=["DB"])
 app.include_router(s3_router, prefix="/s3", tags=["S3"])
+app.include_router(data_scout_router, prefix="/scout", tags=["Scout"])
 
 
 @app.on_event("shutdown")
