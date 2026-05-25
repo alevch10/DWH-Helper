@@ -8,7 +8,7 @@ from app.config.settings import settings
 from .client import MetrikaClient
 from . import schemas
 from .services import generate_report
-from .ad_efficiency import get_ad_efficiency
+# from .ad_efficiency import get_ad_efficiency
 
 router = APIRouter()
 
@@ -240,30 +240,30 @@ async def prepare_report(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/ad_efficiency", response_model=schemas.ProcessDayResponse)
-async def ad_efficiency(
-    request: schemas.ProcessDayRequest,
-    token: str = Depends(get_token_from_header),
-    user=Depends(require_read),
-):
-    """
-    Запускает ETL-процесс для указанного дня.
-    Возвращает количество записей в каждой витрине после обработки.
-    """
-    try:
-        # Если fields не передан, используем значение по умолчанию из настроек
-        fields_to_use = request.fields or settings.yandexmetrica.default_fields.split(
-            ","
-        )
-        statistics = await get_ad_efficiency(
-            token=token,
-            counter_id=request.counter_id,
-            date=request.date,
-            source=request.source,
-            fields=fields_to_use,
-        )
-        return schemas.ProcessDayResponse(
-            status="success", statistics=statistics, message="Данные успешно обработаны"
-        )
-    except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Ошибка обработки: {str(e)}")
+# @router.post("/ad_efficiency", response_model=schemas.ProcessDayResponse)
+# async def ad_efficiency(
+#     request: schemas.ProcessDayRequest,
+#     token: str = Depends(get_token_from_header),
+#     user=Depends(require_read),
+# ):
+#     """
+#     Запускает ETL-процесс для указанного дня.
+#     Возвращает количество записей в каждой витрине после обработки.
+#     """
+#     try:
+#         # Если fields не передан, используем значение по умолчанию из настроек
+#         fields_to_use = request.fields or settings.yandexmetrica.default_fields.split(
+#             ","
+#         )
+#         statistics = await get_ad_efficiency(
+#             token=token,
+#             counter_id=request.counter_id,
+#             date=request.date,
+#             source=request.source,
+#             fields=fields_to_use,
+#         )
+#         return schemas.ProcessDayResponse(
+#             status="success", statistics=statistics, message="Данные успешно обработаны"
+#         )
+#     except Exception as e:
+#         raise HTTPException(status_code=422, detail=f"Ошибка обработки: {str(e)}")

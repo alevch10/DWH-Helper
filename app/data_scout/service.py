@@ -74,9 +74,7 @@ def is_json_like(value: str) -> bool:
     if not isinstance(value, str):
         return False
     stripped = value.strip()
-    return (
-        stripped.startswith(("{", "[")) and stripped.endswith(("}", "]"))
-    )
+    return stripped.startswith(("{", "[")) and stripped.endswith(("}", "]"))
 
 
 def try_parse_json(value: str) -> Tuple[bool, Optional[Any]]:
@@ -88,7 +86,10 @@ def try_parse_json(value: str) -> Tuple[bool, Optional[Any]]:
 
 
 def update_field_stats(
-    stats: FieldStats, value: Any, is_array_length: bool = False, skip_type_update: bool = False
+    stats: FieldStats,
+    value: Any,
+    is_array_length: bool = False,
+    skip_type_update: bool = False,
 ) -> None:
     """Update statistics for a field with a new value."""
     value_type = get_json_type(value)
@@ -120,7 +121,9 @@ def update_field_stats(
 
     if not is_array_length and len(stats.unique_samples) < 100:
         try:
-            stats.unique_samples.add(value if not isinstance(value, list) else tuple(value))
+            stats.unique_samples.add(
+                value if not isinstance(value, list) else tuple(value)
+            )
         except TypeError:
             pass
 
@@ -155,7 +158,9 @@ def traverse(
                     traverse_json_content(parsed, new_path, stats)
                 else:
                     stats[new_path_str].type = "broken_json"
-                    update_field_stats(stats[new_path_str], value, skip_type_update=True)
+                    update_field_stats(
+                        stats[new_path_str], value, skip_type_update=True
+                    )
             else:
                 update_field_stats(stats[new_path_str], value)
 
@@ -165,7 +170,7 @@ def traverse(
 
         array_stats = stats[path_str]
         array_stats.type = "array"
-        
+
         if len(data) > 0:
             length = len(data)
             if array_stats.min_length is None or length < array_stats.min_length:
@@ -223,7 +228,7 @@ def traverse_json_content(
 
         array_stats = stats[path_str]
         array_stats.type = "array"
-        
+
         if len(data) > 0:
             length = len(data)
             if array_stats.min_length is None or length < array_stats.min_length:
@@ -251,35 +256,35 @@ def traverse_json_content(
 def build_yaml_schema(stats: Dict[str, FieldStats]) -> Dict[str, Any]:
     """Build nested YAML schema from flat stats dictionary."""
     result = {}
-    
+
     paths_by_depth = sorted(stats.keys(), key=lambda x: x.count("."))
-    
+
     for path_str in paths_by_depth:
         if not path_str:
             continue
-        
+
         parts = path_str.split(".")
         current = result
-        
+
         for i, part in enumerate(parts):
             if i == len(parts) - 1:
                 field_dict = stats[path_str].to_dict()
-                
+
                 if field_dict.get("type") in ("object", "array"):
                     if "children" not in field_dict:
                         field_dict["children"] = {}
-                    
+
                     prefix = ".".join(parts)
                     for other_path in stats.keys():
                         if other_path.startswith(f"{prefix}."):
-                            remaining = other_path[len(prefix) + 1:]
+                            remaining = other_path[len(prefix) + 1 :]
                             if "." not in remaining:
                                 child_name = remaining
                                 if child_name not in field_dict["children"]:
-                                    field_dict["children"][child_name] = (
-                                        stats[other_path].to_dict()
-                                    )
-                
+                                    field_dict["children"][child_name] = stats[
+                                        other_path
+                                    ].to_dict()
+
                 current[part] = field_dict
             else:
                 if part not in current:
@@ -290,9 +295,9 @@ def build_yaml_schema(stats: Dict[str, FieldStats]) -> Dict[str, Any]:
                     }
                 elif "children" not in current[part]:
                     current[part]["children"] = {}
-                
+
                 current = current[part]["children"]
-    
+
     return result
 
 
@@ -322,9 +327,7 @@ def format_schema_for_output(schema: Dict[str, Any]) -> Dict[str, Any]:
                 formatted["unique_samples"] = value["unique_samples"]
 
             if "children" in value and value["children"]:
-                formatted["children"] = format_schema_for_output(
-                    value["children"]
-                )
+                formatted["children"] = format_schema_for_output(value["children"])
 
             result[key] = formatted
 
@@ -343,9 +346,7 @@ def analyze_data(path: str) -> Dict[str, Any]:
 
     if not zip_files:
         logger.warning(f"No zip files found at path: {path}")
-        raise ValueError(
-            f"No zip files found at path: {path}"
-        )
+        raise ValueError(f"No zip files found at path: {path}")
 
     stats: Dict[str, FieldStats] = {}
 

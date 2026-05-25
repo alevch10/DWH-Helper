@@ -1,0 +1,261 @@
+source:
+  type: s3
+  bucket: ef0075029599-careful-phoenix-test/
+  prefix: amplitude_exports/
+  sort:
+    by: key
+    natural: true
+    order: asc
+
+tables:
+  - name: amplitude_web.events
+    primary_key: [uuid, event_time]
+    on_conflict: DO NOTHING
+    update_strategy: always
+    fields:
+      - target: uuid
+        sources: ["uuid"]
+        type: uuid
+        required: true
+      - target: event_time
+        sources: ["event_time"]
+        type: datetime
+        required: true
+        format: iso
+      - target: session_id
+        sources: ["session_id"]
+        type: integer
+        required: true
+      - target: user_id
+        sources: ["user_id"]
+        type: integer
+        null_values: ["", "N/A", "-1"]
+      - target: event_type
+        sources: ["event_type"]
+        type: string
+        required: true
+      - target: event_id
+        sources: ["event_id"]
+        type: integer
+        required: true
+      - target: device_id
+        sources: ["device_id"]
+        type: string
+        required: true
+
+      - target: _dummy
+        sources:
+          - "$insert_id"
+          - "$insert_key"
+          - "$schema"
+          - "adid"
+          - "amplitude_attribution_ids"
+          - "amplitude_event_type"
+          - "amplitude_id"
+          - "app"
+          - "client_event_time"
+          - "client_upload_time"
+          - "data"
+          - "data_type"
+          - "device_brand"
+          - "device_carrier"
+          - "device_manufacturer"
+          - "device_model"
+          - "dma"
+          - "global_user_properties"
+          - "group_properties"
+          - "groups"
+          - "idfa"
+          - "is_attribution_event"
+          - "library"
+          - "location_lat"
+          - "location_lng"
+          - "partner_id"
+          - "paying"
+          - "plan"
+          - "platform"
+          - "processed_time"
+          - "sample_rate"
+          - "server_received_time"
+          - "server_upload_time"
+          - "source_id"
+          - "start_version"
+          - "user_creation_time"
+          - "version_name"
+        type: string
+        ignore: true
+        required: false
+
+  - name: amplitude_web.devices
+    primary_key: [device_id]
+    on_conflict: DO UPDATE
+    update_strategy: on_change
+    ignore_fields_for_diff: [device_id]
+    fields:
+      - target: device_id
+        sources: ["device_id"]
+        type: string
+        required: true
+      - target: device_family
+        sources: ["device_family"]
+        type: string
+      - target: device_type
+        sources: ["device_type"]
+        type: string
+      - target: os_name
+        sources: ["os_name"]
+        type: string
+      - target: os_version
+        sources: ["os_version"]
+        type: string
+
+  - name: amplitude_web.locations
+    primary_key: [uuid, event_time]
+    on_conflict: DO NOTHING
+    update_strategy: always
+    fields:
+      - target: uuid
+        sources: ["uuid"]
+        type: uuid
+        required: true
+      - target: event_time
+        sources: ["event_time"]
+        type: datetime
+        required: true
+      - target: city
+        sources: ["city"]
+        type: string
+      - target: country
+        sources: ["country"]
+        type: string
+      - target: ip_address
+        sources: ["ip_address"]
+        type: inet
+        required: true
+      - target: language
+        sources: ["language"]
+        type: string
+      - target: region
+        sources: ["region"]
+        type: string
+
+  - name: amplitude_web.event_properties
+    primary_key: [uuid, event_time]
+    on_conflict: DO NOTHING
+    update_strategy: always
+    fields:
+      - target: uuid
+        sources: ["uuid"]
+        type: uuid
+        required: true
+      - target: event_time
+        sources: ["event_time"]
+        type: datetime
+        required: true
+      - target: event_properties
+        sources: ["event_properties", "properties"]
+        type: json
+        required: true
+
+  - name: amplitude_web.users
+    primary_key: [uuid, event_time]
+    on_conflict: null
+    update_strategy: always
+    fields:
+      - target: uuid
+        sources: ["uuid"]
+        type: uuid
+        required: true
+      - target: event_time
+        sources: ["event_time"]
+        type: datetime
+        required: true
+      - target: user_id
+        sources: ["user_id"]
+        type: integer
+        null_values: ["", "N/A", "-1", "null", "None"]
+      - target: ehr_id
+        sources: ["user_properties.EHR_ID"]
+        type: integer
+        null_values: ["", "N/A", "no_ehr", "null"]
+      - target: source
+        sources: ["user_properties.source"]
+        type: string
+        max_length: 1024
+      - target: appointments_booked
+        sources: ["user_properties.appointments_booked"]
+        type: integer
+        default: 0
+      - target: appointments_cancelled
+        sources: ["user_properties.appointments_cancelled"]
+        type: integer
+        default: 0
+      - target: cohort_day
+        sources: ["user_properties.cohort_day"]
+        type: integer
+      - target: cohort_month
+        sources: ["user_properties.cohort_month"]
+        type: integer
+      - target: cohort_week
+        sources: ["user_properties.cohort_week"]
+        type: integer
+      - target: audio_permission
+        sources: ["user_properties.audio_permission"]
+        type: string
+      - target: video_permission
+        sources: ["user_properties.video_permission"]
+        type: string
+      - target: telemed_consultations_resumed
+        sources: ["user_properties.telemed_consultations_resumed"]
+        type: integer
+      - target: telemed_messages_sent
+        sources: ["user_properties.telemed_messages_sent"]
+        type: integer
+      - target: telemed_messages_received
+        sources: ["user_properties.telemed_messages_received"]
+        type: integer
+      - target: telemed_files_received
+        sources: ["user_properties.telemed_files_received"]
+        type: integer
+      - target: referral_second_appointment_amount
+        sources: ["user_properties.referral_second_appointment_amount"]
+        type: integer
+      - target: referral_appointment_amount
+        sources: ["user_properties.referral_appointment_amount"]
+        type: integer
+      - target: referral_vaccination_amount
+        sources: ["user_properties.referral_vaccination_amount"]
+        type: integer
+      - target: referral_operation_amount
+        sources: ["user_properties.referral_operation_amount"]
+        type: integer
+      - target: referral_amount
+        sources: ["user_properties.referral_amount"]
+        type: integer
+      - target: referral_exam_amount
+        sources: ["user_properties.referral_exam_amount"]
+        type: integer
+      - target: referral_medical_test_amount
+        sources: ["user_properties.referral_medical_test_amount"]
+        type: integer
+      - target: has_out_of_reference_lab_results
+        sources: ["user_properties.has_out_of_reference_lab_results"]
+        type: boolean
+        value_map:
+          "true": true
+          "True": true
+          "1": true
+          "false": false
+          "False": false
+          "0": false
+          "": null
+      - target: is_lk
+        sources: ["user_properties.isLk", "user_properties.is_lk"]
+        type: boolean
+        value_map:
+          "true": true
+          "True": true
+          "1": true
+          "false": false
+          "False": false
+          "0": false

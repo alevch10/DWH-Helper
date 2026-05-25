@@ -52,9 +52,7 @@ app/
 │
 ├── etl/                   # ETL‑процессор: трансформация и загрузка в DB
 │ ├── init.py              # Загрузка field_mappings.yaml → MAPPINGS
-│ ├── transformer.py       # transform_single_record – преобразование сырых данных в модели DB
 │ ├── schemas.py           # Pydantic-модели для процессора
-│ ├── orchestrator.py      # process_source, _process_record, compare_changeable, ProcessingInterrupted
 │ ├── field_mappings.yaml  # Конфиг маппинга (permanent + changeable)
 │ └── router.py            # POST /transform/user-properties
 │

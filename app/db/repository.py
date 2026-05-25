@@ -39,6 +39,12 @@ class DBRepository:
         "yandex_metrika.ym_user_paths": "UserPath",
         "yandex_metrika.ym_call_data": "CallData",
         "yandex_metrika.ym_page_transitions": "PageTransition",
+        # Amplitude
+        "amplitude_web.events": db_schemas.AmplitudeWebEvent,
+        "amplitude_web.event_properties": db_schemas.AmplitudeWebEventProperties,
+        "amplitude_web.locations": db_schemas.AmplitudeWebLocation,
+        "amplitude_web.devices": db_schemas.AmplitudeWebDevice,
+        "amplitude_web.users": db_schemas.AmplitudeWebUser,
     }
 
     def __init__(self):
@@ -412,6 +418,69 @@ class DBRepository:
         logger.info(
             f"Marked {len(uuids)} records as migrated={migrated} in tmp_user_properties"
         )
+
+    def upsert_batch(
+        self,
+        table: str,
+        rows: List[Dict[str, Any]],
+        conflict_target: str,
+        set_clause: str,
+        returning_column: Optional[str] = None,
+    ) -> Tuple[List[str], int]:
+        """
+        Выполняет INSERT ... ON CONFLICT (conflict_target) DO UPDATE SET set_clause.
+        set_clause – строка вида "col1 = EXCLUDED.col1, col2 = EXCLUDED.col2"
+        """
+        if not rows:
+            return [], 0
+        max_rows_per_batch = self._max_rows_for_table(table)
+        all_ids = []
+        batches_used = 0
+        for i in range(0, len(rows), max_rows_per_batch):
+            chunk = rows[i : i + max_rows_per_batch]
+            ids = self._upsert_batch_query(
+                table, chunk, conflict_target, set_clause, returning_column
+            )
+            all_ids.extend(ids)
+            batches_used += 1
+        return all_ids, batches_used
+
+    def _upsert_batch_query(
+        self,
+        table: str,
+        rows: List[Dict],
+        conflict_target: str,
+        set_clause: str,
+        returning_column: Optional[str],
+    ) -> List[str]:
+        if not rows:
+            return []
+        columns = list(rows[0].keys())
+        value_rows = []
+        params = []
+        for row in rows:
+            placeholders = []
+            for col in columns:
+                params.append(row[col])
+                placeholders.append("%s")
+            value_rows.append(f"({', '.join(placeholders)})")
+        query = f"""
+            INSERT INTO {table} ({", ".join(columns)})
+            VALUES {", ".join(value_rows)}
+            ON CONFLICT ({conflict_target}) DO UPDATE SET {set_clause}
+        """
+        if returning_column:
+            query += f" RETURNING {returning_column}"
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(query, params)
+                if returning_column:
+                    rows = cur.fetchall()
+                    return [str(row[returning_column]) for row in rows]
+                return []
+        finally:
+            self._put_conn(conn)
 
 
 # ---------- Глобальный синглтон ----------

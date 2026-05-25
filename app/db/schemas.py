@@ -64,7 +64,7 @@ class PermanentUserProperties(BaseModel):
 class ChangeableUserProperties(BaseModel):
     ehr_id: Optional[int] = None
     uuid: UUID
-    event_time: datetime  # обязательное поле
+    event_time: datetime
     language: Optional[str] = None
     age: Optional[int] = None
     app_city: Optional[str] = None
@@ -145,6 +145,98 @@ class UserLocations(BaseModel):
     country: Optional[str] = None
     ip_address: Optional[str] = None
     region: Optional[str] = None
+
+
+class AmplitudeWebEvent(BaseModel):
+    uuid: UUID
+    event_time: datetime
+    session_id: int
+    user_id: Optional[int] = None
+    event_type: str
+    event_id: int
+    device_id: str
+
+    @field_validator("event_time", mode="before")
+    @classmethod
+    def parse_event_time(cls, v):
+        if isinstance(v, datetime):
+            return v
+        try:
+            return datetime.fromisoformat(v.replace("Z", "+00:00"))
+        except (ValueError, TypeError, AttributeError):
+            raise ValueError(f"Invalid datetime format: {v}")
+
+
+class AmplitudeWebEventProperties(BaseModel):
+    uuid: UUID
+    event_time: datetime
+    event_properties: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("event_time", mode="before")
+    @classmethod
+    def parse_event_time(cls, v):
+        if isinstance(v, datetime):
+            return v
+        try:
+            return datetime.fromisoformat(v.replace("Z", "+00:00"))
+        except (ValueError, TypeError, AttributeError):
+            raise ValueError(f"Invalid datetime format: {v}")
+
+
+class AmplitudeWebLocation(BaseModel):
+    uuid: UUID
+    event_time: datetime
+    city: Optional[str] = None
+    country: Optional[str] = None
+    ip_address: str
+    language: Optional[str] = None
+    region: Optional[str] = None
+
+    @field_validator("event_time", mode="before")
+    @classmethod
+    def parse_event_time(cls, v):
+        if isinstance(v, datetime):
+            return v
+        try:
+            return datetime.fromisoformat(v.replace("Z", "+00:00"))
+        except (ValueError, TypeError, AttributeError):
+            raise ValueError(f"Invalid datetime format: {v}")
+
+
+class AmplitudeWebDevice(BaseModel):
+    device_id: str
+    device_family: Optional[str] = None
+    device_type: Optional[str] = None
+    os_name: Optional[str] = None
+    os_version: Optional[str] = None
+
+
+class AmplitudeWebUser(BaseModel):
+    uuid: UUID
+    event_time: datetime
+    user_id: int
+    ehr_id: int
+    source: str
+    appointments_booked: int
+    appointments_cancelled: int
+    cohort_day: int
+    cohort_month: int
+    cohort_week: int
+    audio_permission: str
+    video_permission: str
+    telemed_consultations_resumed: int
+    telemed_messages_sent: int
+    telemed_messages_received: int
+    telemed_files_received: int
+    referral_second_appointment_amount: int
+    referral_appointment_amount: int
+    referral_vaccination_amount: int
+    referral_operation_amount: int
+    referral_amount: int
+    referral_exam_amount: int
+    referral_medical_test_amount: int
+    has_out_of_reference_lab_results: bool
+    is_lk: bool
 
 
 # =======================

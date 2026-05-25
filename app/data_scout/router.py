@@ -12,7 +12,9 @@ router = APIRouter()
 
 
 @router.get("/data_analysis")
-async def get_data_analysis(path: str = Query(..., description="S3 path prefix")) -> Response:
+async def get_data_analysis(
+    path: str = Query(..., description="S3 path prefix"),
+) -> Response:
     """
     Analyze data structure in S3.
 
@@ -24,7 +26,9 @@ async def get_data_analysis(path: str = Query(..., description="S3 path prefix")
     """
     try:
         result = analyze_data(path)
-        yaml_output = yaml.dump(result, default_flow_style=False, allow_unicode=True, sort_keys=False)
+        yaml_output = yaml.dump(
+            result, default_flow_style=False, allow_unicode=True, sort_keys=False
+        )
         return Response(content=yaml_output, media_type="application/x-yaml")
 
     except ValueError as e:

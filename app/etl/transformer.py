@@ -1,240 +1,350 @@
-import re
-from uuid import UUID
-from datetime import datetime
-from typing import Optional, Dict, Any, Literal, Tuple, List
+import io
+import json
+import zipfile
+from typing import Dict, Any, List, Tuple, Optional, Set
+from collections import defaultdict
 
-from app.db.schemas import (
-    PermanentUserProperties,
-    ChangeableUserProperties,
-)
-from app.etl import MAPPINGS
 from app.config.logger import get_logger
+from app.s3.client import S3Client
+from app.db.repository import get_repository
+from app.etl.config_models import ETLConfig, TableConfig, FieldMapping, SourceS3Config
+from app.etl.utils import (
+    extract_value_by_path,
+    apply_value_map,
+    convert_type,
+    natural_sort_key,
+    find_unknown_keys,
+)
 
 logger = get_logger(__name__)
 
-SourceType = Literal["amplitude", "tmp_table"]
+
+class ProcessingInterrupted(Exception):
+    def __init__(
+        self,
+        message,
+        failed_file=None,
+        failed_line=None,
+        last_successful_file=None,
+        last_successful_line=None,
+        error_details=None,
+    ):
+        self.message = message
+        self.failed_file = failed_file
+        self.failed_line = failed_line
+        self.last_successful_file = last_successful_file
+        self.last_successful_line = last_successful_line
+        self.error_details = error_details
+        super().__init__(message)
 
 
-def safe_dict(value):
-    """Возвращает словарь, если value — dict, иначе пустой dict."""
-    return value if isinstance(value, dict) else {}
-
-
-def transform_single_record(
-    raw_record: Dict[str, Any], source_type: SourceType, mappings: Dict = MAPPINGS
-) -> Tuple[
-    Optional[PermanentUserProperties], Optional[ChangeableUserProperties], List[Dict]
-]:
+def _transform_record(
+    record: Dict, table_cfg: TableConfig, all_known_paths: Set[str]
+) -> Tuple[Optional[Dict], List[str]]:
+    """Применяет маппинг к одной сырой записи. Возвращает (data, errors)."""
+    data = {}
     errors = []
-    permanent_data = {}
-    changeable_data = {}
 
-    # --- UUID ---
-    uuid_raw = raw_record.get("uuid")
-    if isinstance(uuid_raw, str):
-        try:
-            uuid = UUID(uuid_raw)
-        except ValueError:
-            errors.append(
-                {"key": "uuid", "value": uuid_raw, "reason": "Invalid UUID format"}
-            )
-            return None, None, errors
-    elif isinstance(uuid_raw, UUID):
-        uuid = uuid_raw
-    else:
-        errors.append(
-            {"key": "uuid", "value": uuid_raw, "reason": "Expected str or UUID"}
-        )
-        return None, None, errors
+    for field in table_cfg.fields:
+        # Пропускаем игнорируемые поля
+        if getattr(field, "ignore", False):
+            continue
 
-    # --- event_time ---
-    event_time_raw = raw_record.get("event_time")
-    if event_time_raw is None:
-        errors.append(
-            {"key": "event_time", "value": None, "reason": "Missing event_time"}
-        )
-        return None, None, errors
-    if isinstance(event_time_raw, str):
-        try:
-            event_time = datetime.fromisoformat(event_time_raw.replace("Z", "+00:00"))
-        except (ValueError, TypeError):
-            errors.append(
-                {
-                    "key": "event_time",
-                    "value": event_time_raw,
-                    "reason": "Invalid ISO datetime",
-                }
-            )
-            return None, None, errors
-    elif isinstance(event_time_raw, datetime):
-        event_time = event_time_raw
-    else:
-        errors.append(
-            {
-                "key": "event_time",
-                "value": str(event_time_raw),
-                "reason": "Unsupported type",
-            }
-        )
-        return None, None, errors
-
-    language = raw_record.get("language")
-    session_id_raw = raw_record.get("session_id")
-    # Преобразуем session_id: если -1, то None, иначе int
-    if session_id_raw == -1 or session_id_raw == "-1":
-        session_id = None
-    else:
-        try:
-            session_id = int(session_id_raw) if session_id_raw is not None else None
-        except (ValueError, TypeError):
-            errors.append(
-                {
-                    "key": "session_id",
-                    "value": session_id_raw,
-                    "reason": "Invalid integer for session_id",
-                }
-            )
-            session_id = None
-    start_version = raw_record.get("start_version")
-
-    # --- user_properties ---
-    if source_type == "amplitude":
-        user_props = safe_dict(raw_record.get("user_properties"))
-    elif source_type == "tmp_table":
-        user_props = safe_dict(raw_record.get("user_properties_json"))
-    else:
-        raise ValueError(f"Unknown source_type: {source_type}")
-
-    # --- Сбор известных ключей ---
-    known_keys = set()
-    for section in ["permanent", "changeable"]:
-        for field in mappings.get(section, []):
-            known_keys.update(field["sources"])
-    known_keys.add("EHR_ID")
-
-    # --- Проверка неизвестных ключей ---
-    unknown_keys = set(user_props.keys()) - known_keys
-    if unknown_keys:
-        for key in unknown_keys:
-            errors.append(
-                {"key": key, "value": user_props[key], "reason": "Unknown key"}
-            )
-        logger.error("Unknown keys found: %s", unknown_keys)
-        return None, None, errors
-
-    # --- EHR_ID ---
-    ehr_id_raw = user_props.get("EHR_ID")
-    if ehr_id_raw in [None, "N/A", "no ehr", "no_ehr"]:
-        ehr_id = None
-    else:
-        try:
-            ehr_id = int(ehr_id_raw)
-            # Можно добавить проверку диапазона при необходимости
-        except (ValueError, TypeError):
-            ehr_id = None
-            errors.append(
-                {"key": "EHR_ID", "value": ehr_id_raw, "reason": "Invalid integer"}
-            )
-            # не прерываем, но ehr_id останется None
-
-    # --- Вспомогательная функция извлечения ---
-    def extract_value(field: Dict) -> Any:
         value = None
-        for source in field["sources"]:
-            raw_value = (
-                user_props.get(source)
-                if source in known_keys
-                else raw_record.get(source)
+        for src in field.sources:
+            val = extract_value_by_path(record, src)
+            if val is not None:
+                value = val
+                break
+        if value is None and field.default is not None:
+            value = field.default
+
+        # Применяем null_values и value_map
+        value = apply_value_map(value, field.value_map or {}, field.null_values or [])
+
+        if value is None and field.required:
+            errors.append(
+                f"Required field {field.target} missing (sources: {field.sources})"
             )
-            if raw_value is not None and raw_value != "N/A":
-                value = raw_value
+            continue
+
+        if value is not None:
+            try:
+                value = convert_type(value, field.type, field.format)
+            except Exception as e:
+                errors.append(f"Field {field.target}: {e}")
+                continue
+
+        data[field.target] = value
+
+    return data, errors
+
+
+def _insert_or_update_batch(
+    repo, table_name: str, rows: List[Dict], table_cfg: TableConfig
+) -> int:
+    """Вставляет или обновляет батч строк. Возвращает количество обработанных строк."""
+    if not rows:
+        return 0
+
+    # Если есть первичный ключ и требуется обновление при конфликте
+    if table_cfg.primary_key and table_cfg.update_strategy == "on_change":
+        conflict_target = ", ".join(table_cfg.primary_key)
+        # Формируем SET clause: обновляем все колонки, кроме первичного ключа
+        set_clause_parts = []
+        for col in rows[0].keys():
+            if col not in table_cfg.primary_key:
+                set_clause_parts.append(f"{col} = EXCLUDED.{col}")
+        set_clause = ", ".join(set_clause_parts)
+        inserted_ids, _ = repo.upsert_batch(
+            table=table_name,
+            rows=rows,
+            conflict_target=conflict_target,
+            set_clause=set_clause,
+            returning_column=table_cfg.primary_key[0],
+        )
+        return len(inserted_ids)
+
+    # Если on_conflict = "DO NOTHING" или "DO UPDATE" (без on_change)
+    if table_cfg.on_conflict and table_cfg.primary_key:
+        conflict_target = ", ".join(table_cfg.primary_key)
+        inserted_ids, _ = repo.insert_batch(
+            table=table_name,
+            rows=rows,
+            on_conflict=table_cfg.on_conflict,
+            conflict_target=f"({conflict_target})",
+            returning_column=table_cfg.primary_key[0],
+        )
+        return len(inserted_ids)
+
+    # Обычная вставка (без конфликта)
+    inserted_ids, _ = repo.insert_batch(table=table_name, rows=rows)
+    return len(inserted_ids)
+
+
+def deduplicate_buffer(table_cfg: TableConfig, buffer: List[Dict]) -> List[Dict]:
+    """
+    Удаляет дубликаты по первичному ключу, оставляя последнюю запись.
+    Подходит для таблиц с ON CONFLICT DO UPDATE.
+    """
+    if not table_cfg.primary_key or table_cfg.on_conflict != "DO UPDATE":
+        return buffer
+
+    pk_fields = table_cfg.primary_key
+    last_by_key = {}
+    for row in buffer:
+        key = tuple(row.get(field) for field in pk_fields)
+        current_time = row.get("event_time")
+        if key not in last_by_key:
+            last_by_key[key] = row
+        else:
+            existing_time = last_by_key[key].get("event_time")
+            if current_time and existing_time and current_time > existing_time:
+                last_by_key[key] = row
+            elif not existing_time:
+                last_by_key[key] = row
+    return list(last_by_key.values())
+
+
+def flush_table_buffer(
+    table_cfg: TableConfig,
+    buffers: Dict[str, List[Dict]],
+    repo,
+    stats: Dict,
+    force: bool = False,
+) -> None:
+    """Сбросить буфер таблицы в БД (с дедупликацией при необходимости)."""
+    table_name = table_cfg.name
+    buffer = buffers.get(table_name, [])
+    if not buffer:
+        return
+    if not force and len(buffer) < table_cfg.batch_size:
+        return
+
+    # Дедуплицируем только если ON CONFLICT DO UPDATE
+    if table_cfg.primary_key and table_cfg.on_conflict == "DO UPDATE":
+        buffer = deduplicate_buffer(table_cfg, buffer)
+        if not buffer:
+            buffers[table_name] = []
+            return
+
+    inserted = _insert_or_update_batch(repo, table_name, buffer, table_cfg)
+    stats["batches"][table_name] += inserted
+    buffers[table_name] = []
+
+
+def _process_s3_files(
+    s3_client: S3Client,
+    source_cfg: SourceS3Config,
+    start_after_file: Optional[str],
+    start_after_line: int,
+    tables_config: List[TableConfig],
+) -> Dict[str, Any]:
+    """Основной цикл по файлам S3 с батчевой вставкой."""
+    bucket = source_cfg.bucket
+    prefix = source_cfg.prefix
+    sort_cfg = source_cfg.sort
+    pattern = source_cfg.file_pattern.replace("*", "")
+
+    objects = s3_client.list_objects(prefix=prefix)
+    files = [obj for obj in objects if obj["Key"].endswith(pattern)]
+    if not files:
+        raise ValueError(f"No files found in {bucket}/{prefix}")
+
+    if sort_cfg.by == "key":
+        key_func = natural_sort_key if sort_cfg.natural else lambda x: x["Key"]
+        files.sort(key=lambda x: key_func(x["Key"]), reverse=(sort_cfg.order == "desc"))
+    else:
+        files.sort(key=lambda x: x["LastModified"], reverse=(sort_cfg.order == "desc"))
+
+    start_idx = 0
+    if start_after_file:
+        for i, obj in enumerate(files):
+            if obj["Key"] == start_after_file:
+                start_idx = i
                 break
 
-        if value is None:
-            return None
+    stats = {"files_processed": 0, "lines_processed": 0, "batches": defaultdict(int)}
+    last_successful_file = None
+    last_successful_line = 0
 
-        field_type = field["type"]
-        if field_type == "string":
-            if "transform" in field and field["transform"] == "lowercase_first":
-                value = value.lower()
-            if "value_map" in field:
-                value = field["value_map"].get(value, value)
-        elif field_type == "integer":
-            if "extract_regex" in field:
-                match = re.search(field["extract_regex"], str(value))
-                if match:
-                    value = match.group(0)
-            try:
-                value = int(value)
-                # Здесь можно добавить проверку диапазона int32, если нужно
-                # if value < -2147483648 or value > 2147483647:
-                #     errors.append(...)
-                #     value = None
-            except (ValueError, TypeError):
-                errors.append(
-                    {
-                        "key": field["target"],
-                        "value": value,
-                        "reason": "Invalid integer",
-                    }
-                )
-                value = None
-        elif field_type == "boolean":
-            true_vals = field.get("true_values", [])
-            false_vals = field.get("false_values", [])
-            null_vals = field.get("null_values", [])
-            if value in true_vals:
-                value = True
-            elif value in false_vals:
-                value = False
-            elif value in null_vals:
-                value = None
-            else:
-                errors.append(
-                    {
-                        "key": field["target"],
-                        "value": value,
-                        "reason": "Invalid boolean",
-                    }
-                )
-                value = None
+    # Собираем известные пути и пути JSONB-полей
+    all_known_paths = set()
+    jsonb_source_prefixes = set()
+    for table in tables_config:
+        for field in table.fields:
+            all_known_paths.update(field.sources)
+            if field.type == "json":
+                for src in field.sources:
+                    jsonb_source_prefixes.add(src)
 
-        return value
+    repo = get_repository()
+    # Буферы для каждой таблицы
+    buffers = {table.name: [] for table in tables_config}
 
-    # --- Заполнение permanent ---
-    for field in mappings.get("permanent", []):
-        permanent_data[field["target"]] = extract_value(field)
-
-    # --- Заполнение changeable ---
-    for field in mappings.get("changeable", []):
-        changeable_data[field["target"]] = extract_value(field)
-
-    # --- Сборка permanent модели ---
-    permanent = None
-    if ehr_id is not None:
-        permanent_data["ehr_id"] = ehr_id
-        permanent_data["first_login_at"] = event_time
+    for idx in range(start_idx, len(files)):
+        file_obj = files[idx]
+        file_key = file_obj["Key"]
+        logger.info(f"Processing file {file_key} ({idx + 1}/{len(files)})")
         try:
-            permanent = PermanentUserProperties(**permanent_data)
+            zip_bytes = s3_client.get_object(file_key)
+            with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+                ndjson_files = [
+                    name for name in zf.namelist() if name.endswith(".ndjson")
+                ]
+                if not ndjson_files:
+                    logger.warning(f"No NDJSON files in {file_key}")
+                    continue
+                ndjson_content = zf.read(ndjson_files[0]).decode("utf-8")
+                lines = ndjson_content.splitlines()
+                start_line = start_after_line if idx == start_idx else 0
+                for line_num, line in enumerate(
+                    lines[start_line:], start=start_line + 1
+                ):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        raw_record = json.loads(line)
+                    except json.JSONDecodeError as e:
+                        raise ProcessingInterrupted(
+                            f"Invalid JSON in {file_key}:{line_num}",
+                            failed_file=file_key,
+                            failed_line=line_num,
+                            last_successful_file=file_key,
+                            last_successful_line=line_num - 1,
+                        )
+
+                    # Проверка неизвестных полей (игнорируем JSONB)
+                    unknown = find_unknown_keys(
+                        raw_record, all_known_paths, jsonb_source_prefixes
+                    )
+                    if unknown:
+                        raise ProcessingInterrupted(
+                            f"Unknown keys in record: {', '.join(sorted(unknown))}",
+                            failed_file=file_key,
+                            failed_line=line_num,
+                            last_successful_file=file_key,
+                            last_successful_line=line_num - 1,
+                        )
+
+                    # Трансформируем и накапливаем в буферах
+                    for table_cfg in tables_config:
+                        data, errors = _transform_record(
+                            raw_record, table_cfg, all_known_paths
+                        )
+                        if errors:
+                            raise ProcessingInterrupted(
+                                f"Transformation errors: {'; '.join(errors)}",
+                                failed_file=file_key,
+                                failed_line=line_num,
+                                last_successful_file=file_key,
+                                last_successful_line=line_num - 1,
+                            )
+                        if data:
+                            buffers[table_cfg.name].append(data)
+                            # Сбрасываем буфер, если достигнут batch_size
+                            if len(buffers[table_cfg.name]) >= table_cfg.batch_size:
+                                flush_table_buffer(
+                                    table_cfg, buffers, repo, stats, force=False
+                                )
+
+                    stats["lines_processed"] += 1
+                    last_successful_line = line_num
+
+                # После окончания файла – принудительный сброс всех буферов
+                for table_cfg in tables_config:
+                    flush_table_buffer(table_cfg, buffers, repo, stats, force=True)
+
+                last_successful_file = file_key
+                start_after_line = 0
+        except ProcessingInterrupted:
+            raise
         except Exception as e:
-            errors.append({"key": "permanent", "value": None, "reason": str(e)})
-            permanent = None
+            raise ProcessingInterrupted(
+                str(e),
+                failed_file=file_key,
+                failed_line=0,
+                last_successful_file=last_successful_file,
+                last_successful_line=last_successful_line,
+            )
+        stats["files_processed"] += 1
 
-    # --- Сборка changeable модели ---
-    changeable_data.update(
-        {
-            "ehr_id": ehr_id,
-            "uuid": uuid,
-            "event_time": event_time,
-            "language": language,
-            "session_id": session_id,
-            "start_version": start_version,
-        }
+    # Финальный сброс (на случай, если что-то осталось)
+    for table_cfg in tables_config:
+        flush_table_buffer(table_cfg, buffers, repo, stats, force=True)
+
+    return stats
+
+
+def process_universal_etl(
+    etl_config: ETLConfig, source_params: Optional[Dict] = None
+) -> Dict[str, Any]:
+    """
+    Главная точка входа для универсального ETL.
+
+    Args:
+        etl_config: Валидированный объект конфигурации (из YAML)
+        source_params: Опциональные параметры для возобновления:
+            - start_after_file: str (S3 ключ файла)
+            - start_after_line: int (номер строки, 0-based)
+    """
+    source_type = etl_config.source.type
+    if source_type != "s3":
+        raise ValueError(f"Only s3 source supported currently, got {source_type}")
+
+    s3_client = S3Client()
+    start_after_file = None
+    start_after_line = 0
+    if source_params:
+        start_after_file = source_params.get("start_after_file")
+        start_after_line = source_params.get("start_after_line", 0)
+
+    stats = _process_s3_files(
+        s3_client=s3_client,
+        source_cfg=etl_config.source,
+        start_after_file=start_after_file,
+        start_after_line=start_after_line,
+        tables_config=etl_config.tables,
     )
-    try:
-        changeable = ChangeableUserProperties(**changeable_data)
-    except Exception as e:
-        errors.append({"key": "changeable", "value": None, "reason": str(e)})
-        changeable = None
-
-    return permanent, changeable, errors
+    return stats
