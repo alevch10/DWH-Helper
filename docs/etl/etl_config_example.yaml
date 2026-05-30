@@ -1,7 +1,7 @@
 source:
   type: s3
-  bucket: ef0075029599-careful-phoenix-test/
-  prefix: amplitude_exports/
+bucket: careful-phoenix-test/
+prefix: amplitude_exports/
   sort:
     by: key
     natural: true
@@ -56,6 +56,11 @@ tables:
           - "client_event_time"
           - "client_upload_time"
           - "data"
+          - "data.first_event"
+          - "data.group_first_event"
+          - "data.group_ids"
+          - "data.user_properties_updated"
+          - "data.path"
           - "data_type"
           - "device_brand"
           - "device_carrier"
