@@ -1,21 +1,25 @@
 # Универсальный ETL-загрузчик (модуль `etl`)
-
+ >* Версия 2.0.0
 ## 📌 Описание
-Модуль `etl` предоставляет **единый, конфигурируемый через YAML** механизм для загрузки данных из S3 (ZIP-архивы с NDJSON) и Яндекс.Метрики (потоковая выгрузка через Logs API) в целевые таблицы PostgreSQL. Вся логика трансформации, маппинга полей, стратегий вставки и обработки ошибок описывается в YAML-конфиге, что позволяет подключать новые источники данных без изменения кода.
+Модуль `etl` предоставляет **единый, конфигурируемый через YAML** механизм для загрузки данных в целевые таблицы PostgreSQL из трёх источников:
+- **S3** – ZIP-архивы с NDJSON
+- **Яндекс.Метрика** – потоковая выгрузка через Logs API
+- **AppMetrica** – экспорт событий через Logs API (CSV/JSON)
+
+Вся логика трансформации, маппинга полей, стратегий вставки и обработки ошибок описывается в YAML-конфиге, что позволяет подключать новые источники данных без изменения кода.
 
 **Ключевые особенности:**
-- ✅ Два типа источника: `s3` (ZIP с NDJSON) и `yandex_metrika` (Logs API → TSV).
-- ✅ Потоковая обработка данных Яндекс.Метрики по дням с транзакциями.
-- ✅ Рекурсивный маппинг полей с поддержкой точечных путей (например, `user_properties.EHR_ID`).
-- ✅ Типизация данных (`string`, `integer`, `float`, `boolean`, `datetime`, `json`, `array`, `inet`, `uuid`).
-- ✅ Гибкая обработка `null` и `value_map`.
-- ✅ Batch-вставка с настраиваемым размером батча.
-- ✅ Поддержка `ON CONFLICT` (`DO NOTHING`, `DO UPDATE`).
-- ✅ Стратегии обновления: `always` (всегда вставка) или `on_change` (только при изменении значений).
-- ✅ Дедупликация буфера для таблиц с `ON CONFLICT DO UPDATE`.
-- ✅ Для S3 – жёсткая валидация неизвестных полей; для Яндекс.Метрики – проверка только запрошенных полей.
-- ✅ Возобновление после ошибки с указанием файла/строки (S3) или даты (Яндекс.Метрика).
-- ✅ Естественная сортировка имён файлов (S3).
+- ✅ Три типа источника: `s3`, `yandex_metrika`, `appmetrica`
+- ✅ Потоковая обработка данных API-источников по дням/чанкам с транзакциями
+- ✅ Рекурсивный маппинг полей с поддержкой точечных путей
+- ✅ Типизация данных (`string`, `integer`, `float`, `boolean`, `datetime`, `json`, `array`, `inet`, `uuid`)
+- ✅ Гибкая обработка `null` и `value_map`
+- ✅ Batch-вставка с настраиваемым размером батча
+- ✅ Поддержка `ON CONFLICT` (`DO NOTHING`, `DO UPDATE`)
+- ✅ Стратегии обновления: `always` или `on_change`
+- ✅ Дедупликация буфера для `ON CONFLICT DO UPDATE`
+- ✅ Для S3 – жёсткая валидация неизвестных полей; для API-источников – проверка только запрошенных полей
+- ✅ Возобновление после ошибки с указанием координат (файл/строка для S3, дата для API-источников)
 
 ---
 
@@ -24,21 +28,19 @@
 `POST /etl/transformer`
 
 ### Заголовки
-- `Authorization: Bearer <токен>` или `OAuth <токен>` (требуется `write`‑доступ).
-  - Для источника `yandex_metrika` токен используется как OAuth-токен Метрики.
+- `Authorization: Bearer <токен>` или `OAuth <токен>` (требуется `write`‑доступ)
 - `Content-Type: application/x-yaml`
 
 ### Параметры запроса (query)
-| Параметр            | Тип    | Описание                                                                 |
-|---------------------|--------|--------------------------------------------------------------------------|
-| `start_after_file`  | string | **S3**: S3-ключ файла, с которого продолжить (опционально)                |
-| `start_after_line`  | int    | **S3**: Номер строки внутри файла (0‑based, по умолчанию 0)               |
-| `start_date`        | string | **Яндекс.Метрика**: дата в формате YYYY-MM-DD, с которой начать загрузку |
 
-### Тело запроса (YAML)
-Содержит конфигурацию ETL (описание источника, таблиц и маппинга полей). Формат зависит от типа источника.
+| Параметр | Тип | Описание |
+|----------|-----|----------|
+| `start_after_file` | string | **S3**: S3-ключ файла, с которого продолжить |
+| `start_after_line` | int | **S3**: Номер строки внутри файла (0‑based) |
+| `start_date` | string | **Яндекс.Метрика / AppMetrica**: дата в формате `YYYY-MM-DD`, с которой начать обработку |
 
 ### Ответ
+
 **Успех (200):**
 ```json
 {
@@ -55,7 +57,7 @@
 }
 ```
 
-**Прерывание (200, но status = "interrupted"):**
+**Прерывание (200, status = "interrupted"):**
 Для S3:
 ```json
 {
@@ -63,11 +65,11 @@
   "message": "Unknown keys in record: $insert_id",
   "failed_file": "amplitude_exports/2022_week_3.zip",
   "failed_line": 42,
-  "last_successful_file": "amplitude_exports/2022_week_3.zip",
+  "last_successful_file": "...",
   "last_successful_line": 41
 }
 ```
-Для Яндекс.Метрики:
+Для API-источников:
 ```json
 {
   "status": "interrupted",
@@ -77,8 +79,6 @@
 }
 ```
 
-**Ошибка валидации конфига (422):** детали ошибок Pydantic.
-
 ---
 
 ## 📄 Формат YAML-конфигурации
@@ -86,13 +86,22 @@
 ### Корневая структура
 ```yaml
 source:
-  type: s3                   # или yandex_metrika
+  type: s3 | yandex_metrika | appmetrica
   # ... параметры источника ...
 
 tables:
   - name: schema.table_name
-    # ... параметры таблицы ...
-    fields: [...]
+    primary_key: [col1, col2]   # опционально
+    on_conflict: DO NOTHING     # или DO UPDATE
+    update_strategy: always     # или on_change
+    ignore_fields_for_diff: []  # для on_change
+    batch_size: 1000
+    fields:                     # список маппингов полей
+      - target: column_name
+        sources: ["field_name"]
+        type: string|integer|...
+        required: true|false
+        # ... остальные параметры поля
 ```
 
 ### Источник `s3`
@@ -101,11 +110,11 @@ source:
   type: s3
   bucket: my-bucket
   prefix: data/
-  file_pattern: "*.zip"      # опционально, по умолчанию "*.zip"
+  file_pattern: "*.zip"
   sort:
-    by: key                  # key или last_modified
+    by: key            # key или last_modified
     natural: true
-    order: asc               # asc или desc
+    order: asc
 ```
 
 ### Источник `yandex_metrika`
@@ -115,84 +124,53 @@ source:
   counter_id: 106613495
   date_from: "2026-02-01"
   date_to: "2026-02-07"
-  source: hits               # hits или visits
-  fields:                    # список полей (если не указан – из настроек)
+  source: hits         # hits или visits
+  fields:              # список полей (если не указан – из настроек)
     - ym:pv:watchID
     - ym:pv:clientID
-    # ...
-  chunk_days: 7              # размер интервала для логирования, по умолчанию 7
+  chunk_days: 7
 ```
-**Особенности:**
-- Данные запрашиваются и обрабатываются по дням (один день – одна транзакция).
-- Все запрошенные поля должны быть либо замаплены в таблицы, либо быть в списке `fields` – иначе ошибка "Unexpected fields".
-- Для полей с некорректным JSON (например, `params`) рекомендуется тип `string`.
+**Особенности:** обработка по дням, один день – одна транзакция. Все поля, полученные в ответе, должны быть перечислены в `fields`. Поле `params` рекомендуется маппить как `string` из-за возможного битого JSON.
 
-### Описание таблиц и маппинга – без изменений
-(Параметры `TableConfig` и `FieldMapping` остаются прежними, как в оригинальном документе.)
-
-### Пример конфигурации для Яндекс.Метрики (нормализованные таблицы)
+### Источник `appmetrica`
 ```yaml
 source:
-  type: yandex_metrika
-  counter_id: 106613495
-  date_from: "2026-02-01"
-  date_to: "2026-02-07"
-  source: hits
-  fields:
-    - ym:pv:watchID
-    - ym:pv:pageViewID
-    - ym:pv:visitID
-    - ym:pv:clientID
-    - ym:pv:dateTime
-    # ... все необходимые поля ...
-
-tables:
-  - name: yandex_metrika.events
-    batch_size: 5000
-    fields:
-      - target: watch_id
-        sources: ["watchID"]
-        type: integer
-      - target: client_id
-        sources: ["clientID"]
-        type: integer
-      # ... маппинг полей events ...
-
-  - name: yandex_metrika.event_params
-    batch_size: 5000
-    fields:
-      - target: watch_id
-        sources: ["watchID"]
-        type: integer
-      - target: params
-        sources: ["params"]
-        type: string   # не json из-за битого JSON
-
-  # ... остальные таблицы ...
+  type: appmetrica
+  application_id: 473434         # необязательно, если задан в настройках
+  date_since: "2026-05-01"
+  date_until: "2026-05-07"
+  export_format: csv             # csv или json
+  fields:                        # полный список полей (если не указан – все поля по умолчанию)
+    - profile_id
+    - event_datetime
+    # ...
+  chunk_days: 7
+  # прочие параметры API: date_dimension, skip_unavailable_shards, use_utf8_bom
 ```
+**Особенности:** запросы разбиваются на интервалы по `chunk_days`. Ожидание готовности экспорта может быть долгим – сервер ждёт без таймаута. Даты приходят в формате `YYYY-MM-DD HH:MM:SS`, ETL корректно их конвертирует.
 
-### Пример конфигурации для Amplitude Web (S3)
-(Оставить существующий пример без изменений.)
+### Примеры конфигураций
+
+Полные примеры для Amplitude Web (S3), нормализованных таблиц Яндекс.Метрики и AppMetrica приведены в Swagger UI (`/docs`) в описании эндпоинта.
 
 ---
 
-## ⚙️ Как это работает (внутреннее устройство)
+## ⚙️ Как это работает
 
-1. **Чтение конфига** – парсинг YAML и валидация через Pydantic-модели.
-2. **Ветвление по типу источника:**
-   - **S3**: _process_s3_files (синхронная, запускается в executor’е)
-   - **yandex_metrika**: _process_yandex_metrika_async (асинхронная)
-3. **S3** – как прежде.
-4. **Яндекс.Метрика**:
-   - Получение токена из заголовка.
-   - Для каждого дня из диапазона:
-     - Создание/ожидание logrequest, потоковое чтение частей через асинхронный генератор `stream_metrika_lines`.
-     - Каждая TSV-строка → словарь → валидация `MetrikaHitRow` → `model_dump(by_alias=True)`.
-     - Проверка, что все ключи словаря входят в нормализованный список запрошенных полей.
-     - Трансформация через `_transform_record`, накопление в буферы.
-     - При достижении `batch_size` – сброс в БД в рамках одной транзакции.
-     - После успешной обработки дня – коммит, при ошибке – откат.
-5. **Возобновление** – при ошибке возвращаются координаты (`failed_date`, `last_successful_date`).
+1. **Чтение конфига** – парсинг YAML, валидация Pydantic-моделью `ETLConfig`.
+2. **Ветвление по типу источника** – вызывается соответствующий обработчик.
+   - **S3**: синхронная обработка файлов в executor’е.
+   - **Яндекс.Метрика / AppMetrica**: асинхронные генераторы/запросы с разбиением по дням/чанкам.
+3. **Для API-источников**:
+   - Получается OAuth-токен из заголовка.
+   - Для каждого дня/чанка формируется запрос к API, данные потоково (Метрика) или целиком (AppMetrica) загружаются.
+   - Для AppMetrica CSV ответ парсится в список словарей с очисткой заголовков.
+   - Для Метрики строки TSV нормализуются и валидируются через модель `MetrikaHitRow`.
+   - Проверяется, что все ключи записи есть в списке запрошенных полей.
+   - Производится трансформация через `_transform_record`, накопление в буферы.
+   - При достижении `batch_size` буфер сбрасывается в БД в одной транзакции (используется `get_raw_connection`).
+   - При успешной обработке чанка транзакция коммитится, при ошибке – откатывается.
+4. **Возобновление** – при ошибке возвращаются координаты (`failed_date`, `last_successful_date`), клиент может повторно вызвать эндпоинт с параметром `start_date`.
 
 ---
 
@@ -200,10 +178,10 @@ tables:
 
 ### S3 (curl)
 ```bash
-curl -X POST "http://localhost:8000/etl/transformer?start_after_file=amplitude_exports/2022_week_3.zip&start_after_line=1500" \
+curl -X POST "http://localhost:8000/etl/transformer?start_after_file=data.zip&start_after_line=1500" \
   -H "Authorization: Bearer <токен>" \
   -H "Content-Type: application/x-yaml" \
-  --data-binary @amplitude_web_etl.yaml
+  --data-binary @config_s3.yaml
 ```
 
 ### Яндекс.Метрика (curl)
@@ -211,7 +189,15 @@ curl -X POST "http://localhost:8000/etl/transformer?start_after_file=amplitude_e
 curl -X POST "http://localhost:8000/etl/transformer?start_date=2026-02-05" \
   -H "Authorization: OAuth <токен>" \
   -H "Content-Type: application/x-yaml" \
-  --data-binary @ym_normalized.yaml
+  --data-binary @config_ym.yaml
+```
+
+### AppMetrica (curl)
+```bash
+curl -X POST "http://localhost:8000/etl/transformer?start_date=2026-05-03" \
+  -H "Authorization: OAuth <токен>" \
+  -H "Content-Type: application/x-yaml" \
+  --data-binary @config_appmetrica.yaml
 ```
 
 ---
@@ -220,6 +206,5 @@ curl -X POST "http://localhost:8000/etl/transformer?start_date=2026-02-05" \
 - [Модуль DB](../db/db.md)
 - [Модуль S3](../s3/s3.md)
 - [Модуль Яндекс.Метрики](../yandex_metrica/yandex_metrica.md)
+- [Модуль AppMetrica](../appmetrica/appmetrica.md)
 - [Конфигурация приложения](../config/config.md)
-- [Модуль авторизации](../config/auth.md)
-```

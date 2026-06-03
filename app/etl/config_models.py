@@ -37,7 +37,22 @@ class SourceYandexMetrikaConfig(BaseModel):
     )
 
 
-SourceConfig = Union[SourceS3Config, SourceYandexMetrikaConfig]  # дискриминатор type
+class SourceAppMetricaConfig(BaseModel):
+    type: Literal["appmetrica"]
+    application_id: Optional[int] = None
+    date_since: date
+    date_until: date
+    fields: Optional[List[str]] = None
+    export_format: Literal["csv", "json"] = "csv"
+    date_dimension: str = "default"
+    skip_unavailable_shards: bool = False
+    use_utf8_bom: bool = True
+    chunk_days: int = Field(
+        default=7, ge=1, description="Размер интервала в днях для разбиения периода"
+    )
+
+
+SourceConfig = Union[SourceS3Config, SourceYandexMetrikaConfig, SourceAppMetricaConfig]
 
 
 class FieldMapping(BaseModel):

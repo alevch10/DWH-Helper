@@ -57,8 +57,18 @@ def convert_type(
                 return value
             if field_format == "iso":
                 return datetime.fromisoformat(value.replace("Z", "+00:00"))
-            # стандартный формат: YYYY-MM-DD HH:MM:SS[.ffffff]
-            return datetime.strptime(value, "%Y-%m-%d %H:%M:%S.%f")
+            # Пытаемся распарсить как ISO-8601 с 'T'
+            value_str = str(value).strip()
+            if "T" in value_str:
+                return datetime.fromisoformat(value_str.replace("Z", "+00:00"))
+            # Пробуем с микросекундами (старый стандартный формат)
+            try:
+                return datetime.strptime(value_str, "%Y-%m-%d %H:%M:%S.%f")
+            except ValueError:
+                pass
+            # Основной формат AppMetrica и других: без микросекунд
+            return datetime.strptime(value_str, "%Y-%m-%d %H:%M:%S")
+
         elif target_type == "json":
             # Преобразуем dict или list в JSON-строку
             if isinstance(value, (dict, list)):

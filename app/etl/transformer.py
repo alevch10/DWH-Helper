@@ -1,6 +1,7 @@
 import asyncio
 import io
 import json
+import csv
 import zipfile
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Tuple, Optional, Set
@@ -14,6 +15,7 @@ from app.etl.config_models import (
     TableConfig,
     SourceS3Config,
     SourceYandexMetrikaConfig,
+    SourceAppMetricaConfig,
 )
 from app.etl.utils import (
     extract_value_by_path,
@@ -25,6 +27,8 @@ from app.etl.utils import (
 from app.yandex_metrika.services import stream_metrika_lines
 from app.yandex_metrika.schemas import MetrikaHitRow
 from app.config.settings import settings
+from app.appmetrica.client import AppMetricaClient
+
 
 logger = get_logger(__name__)
 
@@ -469,5 +473,230 @@ async def process_universal_etl(
         return await _process_yandex_metrika_async(
             source, etl_config.tables, token, start_date
         )
+    elif source.type == "appmetrica":
+        if not token:
+            raise ValueError("Token is required for appmetrica source")
+        start_date = source_params.get("start_date") if source_params else None
+        return await _process_appmetrica_async(
+            source, etl_config.tables, token, start_date
+        )
     else:
         raise ValueError(f"Unsupported source type: {source.type}")
+
+
+def _parse_appmetrica_csv(csv_text: str) -> List[Dict[str, str]]:
+    """Разбирает CSV-строку от AppMetrica, очищая заголовки от BOM и пробелов."""
+    if not csv_text.strip():
+        return []
+    # Убираем BOM (UTF-8), если он есть в начале
+    if csv_text.startswith("\ufeff"):
+        csv_text = csv_text[1:]
+    reader = csv.reader(io.StringIO(csv_text))
+    raw_headers = next(reader, [])
+    if not raw_headers:
+        return []
+    # Очищаем заголовки: убираем пробелы, кавычки, BOM в каждом заголовке
+    headers = [h.strip().strip('"').lstrip("\ufeff") for h in raw_headers]
+    logger.debug("AppMetrica CSV headers after cleaning: %s", headers)
+    rows = []
+    for row in reader:
+        if not row:
+            continue
+        # Дополняем значения до количества заголовков
+        if len(row) < len(headers):
+            row.extend([""] * (len(headers) - len(row)))
+        # Собираем словарь, очищая значения от кавычек
+        record = {}
+        for i, h in enumerate(headers):
+            value = row[i].strip().strip('"') if i < len(row) else ""
+            record[h] = value
+        rows.append(record)
+    return rows
+
+
+async def _process_appmetrica_async(
+    source_cfg: SourceAppMetricaConfig,
+    tables_config: List[TableConfig],
+    token: str,
+    start_date: Optional[str] = None,
+) -> Dict[str, Any]:
+    # Токен для AppMetrica API
+    api_key = token
+
+    # Получить application_id (из конфига или из настроек)
+    app_id = source_cfg.application_id or settings.appmetrica.application_id
+    if not app_id:
+        raise ValueError("application_id is required")
+
+    # Список полей: если не указаны, берём default_fields из router.py (скопируем сюда)
+    default_fields_str = (
+        "app_build_number,profile_id,os_name,os_version,device_manufacturer,device_model,device_type,"
+        "device_locale,device_ipv6,app_version_name,event_name,event_json,connection_type,operator_name,"
+        "country_iso_code,city,appmetrica_device_id,installation_id,session_id,event_datetime"
+    )
+    fields_list = source_cfg.fields
+    if not fields_list:
+        fields_list = default_fields_str.split(",")
+    fields_str = ",".join(fields_list)
+
+    # Преобразуем даты
+    date_from = source_cfg.date_since
+    date_to = source_cfg.date_until
+    if start_date:
+        date_from = max(date_from, datetime.strptime(start_date, "%Y-%m-%d").date())
+
+    # Разбиваем на интервалы по chunk_days
+    chunk_days = source_cfg.chunk_days
+    current_start = date_from
+    stats = {"files_processed": 0, "lines_processed": 0, "batches": defaultdict(int)}
+    repo = get_repository()
+
+    # Нормализованные запрошенные поля для проверки
+    normalized_requested = set(fields_list)
+
+    all_known_paths = set()
+    jsonb_source_prefixes = set()
+    for table in tables_config:
+        for field in table.fields:
+            all_known_paths.update(field.sources)
+            if field.type == "json":
+                for src in field.sources:
+                    jsonb_source_prefixes.add(src)
+
+    client = AppMetricaClient()
+
+    while current_start <= date_to:
+        chunk_end = min(
+            current_start + timedelta(days=chunk_days) - timedelta(days=1), date_to
+        )
+        date_since_str = current_start.strftime("%Y-%m-%d 00:00:00")
+        date_until_str = chunk_end.strftime("%Y-%m-%d 23:59:59")
+        logger.info(
+            f"Processing AppMetrica chunk: {date_since_str} -> {date_until_str}"
+        )
+
+        # Запрашиваем данные
+        try:
+            fetch_result = await client.fetch_export(
+                application_id=app_id,
+                skip_unavailable_shards=source_cfg.skip_unavailable_shards,
+                date_since=date_since_str,
+                date_until=date_until_str,
+                date_dimension=source_cfg.date_dimension,
+                use_utf8_bom=source_cfg.use_utf8_bom,
+                fields=fields_str,
+                export_format=source_cfg.export_format,
+                api_key=api_key,
+                poll_timeout=86400,
+            )
+        except Exception as e:
+            raise ProcessingInterrupted(
+                f"AppMetrica export failed: {str(e)}",
+                failed_date=current_start.strftime("%Y-%m-%d"),
+                last_successful_date=(current_start - timedelta(days=1)).strftime(
+                    "%Y-%m-%d"
+                )
+                if current_start > date_from
+                else None,
+            )
+
+        if fetch_result["status"] != "ready":
+            raise ProcessingInterrupted(
+                f"AppMetrica export not ready: {fetch_result.get('detail', 'unknown')}",
+                failed_date=current_start.strftime("%Y-%m-%d"),
+                last_successful_date=(current_start - timedelta(days=1)).strftime(
+                    "%Y-%m-%d"
+                )
+                if current_start > date_from
+                else None,
+            )
+
+        raw_data = fetch_result["result"]
+
+        # Преобразуем в список записей
+        if source_cfg.export_format == "json":
+            events = raw_data.get("data", [])
+        else:  # csv
+            events = _parse_appmetrica_csv(raw_data)
+        if events:
+            logger.debug("First record sample keys: %s", list(events[0].keys()))
+            logger.debug("Normalized requested fields: %s", normalized_requested)
+
+        if not events:
+            logger.info(f"No events in chunk {date_since_str} - {date_until_str}")
+            current_start = chunk_end + timedelta(days=1)
+            continue
+
+        # Транзакция на чанк
+        conn = repo.get_raw_connection()
+        buffers = {table.name: [] for table in tables_config}
+        chunk_lines = 0
+        try:
+            for record in events:
+                # Проверка неизвестных полей
+                logger.debug("Record keys: %s", list(record.keys()))
+                unknown = set(record.keys()) - normalized_requested
+                if unknown:
+                    raise ProcessingInterrupted(
+                        f"Unexpected fields in record: {', '.join(sorted(unknown))}",
+                        failed_date=current_start.strftime("%Y-%m-%d"),
+                        last_successful_date=(
+                            current_start - timedelta(days=1)
+                        ).strftime("%Y-%m-%d")
+                        if current_start > date_from
+                        else None,
+                    )
+
+                # Трансформация по таблицам
+                for table_cfg in tables_config:
+                    data, errors = _transform_record(record, table_cfg, all_known_paths)
+                    if errors:
+                        raise ProcessingInterrupted(
+                            f"Transformation errors: {'; '.join(errors)}",
+                            failed_date=current_start.strftime("%Y-%m-%d"),
+                            last_successful_date=(
+                                current_start - timedelta(days=1)
+                            ).strftime("%Y-%m-%d")
+                            if current_start > date_from
+                            else None,
+                        )
+                    if data:
+                        buffers[table_cfg.name].append(data)
+                        if len(buffers[table_cfg.name]) >= table_cfg.batch_size:
+                            flush_table_buffer(
+                                table_cfg, buffers, repo, stats, force=False, conn=conn
+                            )
+
+                chunk_lines += 1
+                stats["lines_processed"] += 1
+
+            # Сброс остатков
+            for table_cfg in tables_config:
+                flush_table_buffer(
+                    table_cfg, buffers, repo, stats, force=True, conn=conn
+                )
+
+            repo.commit(conn)
+            stats["files_processed"] += 1
+            logger.info(
+                f"Chunk {date_since_str} - {date_until_str} committed, lines: {chunk_lines}"
+            )
+
+        except ProcessingInterrupted:
+            repo.rollback(conn)
+            raise
+        except Exception as e:
+            repo.rollback(conn)
+            raise ProcessingInterrupted(
+                str(e),
+                failed_date=current_start.strftime("%Y-%m-%d"),
+                last_successful_date=(current_start - timedelta(days=1)).strftime(
+                    "%Y-%m-%d"
+                )
+                if current_start > date_from
+                else None,
+            )
+
+        current_start = chunk_end + timedelta(days=1)
+
+    return stats
