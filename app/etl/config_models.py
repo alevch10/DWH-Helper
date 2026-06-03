@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, field_validator
-from typing import List, Optional, Dict, Any, Literal
-from uuid import UUID
+from typing import List, Optional, Dict, Any, Literal, Union
+from datetime import date
 
 
 class SourceS3Sort(BaseModel):
@@ -25,7 +25,34 @@ class SourceTmpTableConfig(BaseModel):
     batch_size: int = 1000
 
 
-SourceConfig = SourceS3Config  # пока только S3
+class SourceYandexMetrikaConfig(BaseModel):
+    type: Literal["yandex_metrika"]
+    counter_id: int
+    date_from: date
+    date_to: date
+    source: Literal["hits", "visits"] = "hits"
+    fields: Optional[List[str]] = None  # если None — возьмётся из настроек
+    chunk_days: int = Field(
+        default=7, ge=1, description="Максимальный размер интервала в днях"
+    )
+
+
+class SourceAppMetricaConfig(BaseModel):
+    type: Literal["appmetrica"]
+    application_id: Optional[int] = None
+    date_since: date
+    date_until: date
+    fields: Optional[List[str]] = None
+    export_format: Literal["csv", "json"] = "csv"
+    date_dimension: str = "default"
+    skip_unavailable_shards: bool = False
+    use_utf8_bom: bool = True
+    chunk_days: int = Field(
+        default=7, ge=1, description="Размер интервала в днях для разбиения периода"
+    )
+
+
+SourceConfig = Union[SourceS3Config, SourceYandexMetrikaConfig, SourceAppMetricaConfig]
 
 
 class FieldMapping(BaseModel):

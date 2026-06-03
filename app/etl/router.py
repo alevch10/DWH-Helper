@@ -1,36 +1,44 @@
 import yaml
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import JSONResponse
-from pydantic import ValidationError
-
-from app.auth.deps import require_write
-from app.config.logger import get_logger
-from app.etl.config_models import ETLConfig
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from app.auth.deps import require_write, User
 from app.etl.transformer import process_universal_etl, ProcessingInterrupted
+from app.etl.config_models import ETLConfig
+from app.etl.schemas import TransformResponse
+from app.config.logger import get_logger
 
 logger = get_logger(__name__)
 router = APIRouter()
+
+
+def _extract_oauth_token(request: Request) -> str | None:
+    """Извлекает OAuth-токен из заголовка Authorization."""
+    auth = request.headers.get("Authorization")
+    if not auth:
+        return None
+    parts = auth.split()
+    if len(parts) == 2 and parts[0] in ("Bearer", "OAuth"):
+        return parts[1]
+    return None
 
 
 @router.post(
     "/transformer",
     summary="Универсальный ETL-загрузчик",
     description="""
-    ## Универсальный ETL-загрузчик данных из S3 в DWH
+    ## Универсальный ETL-загрузчик данных в DWH
 
-    Принимает **YAML-конфигурацию** в теле запроса с заголовком `Content-Type: application/x-yaml`.
+    Поддерживаемые источники:
+    - **S3** – ZIP-архивы с NDJSON
+    - **Yandex Metrica** – Logs API (потоковая загрузка)
+    - **AppMetrica** – Logs API (CSV/JSON)
+
+    Принимает YAML-конфигурацию в теле запроса.
+    Content-Type: application/x-yaml
 
     ### Параметры возобновления (query):
-    - `start_after_file` – S3-ключ файла, с которого продолжить
-    - `start_after_line` – номер строки внутри файла (0‑based, по умолчанию 0)
-
-    ### Пример запроса через curl:
-    ```bash
-    curl -X POST "http://localhost:8000/etl/transformer?start_after_file=data/2024_week_1.zip" \\
-      -H "Authorization: Bearer <токен>" \\
-      -H "Content-Type: application/x-yaml" \\
-      --data-binary @config.yaml
-    ```
+    - `start_after_file` – S3-ключ файла (только для S3)
+    - `start_after_line` – строка внутри файла (только для S3)
+    - `start_date` – дата YYYY-MM-DD для Яндекс.Метрики и AppMetrica
     """,
     openapi_extra={
         "requestBody": {
@@ -38,8 +46,8 @@ router = APIRouter()
                 "application/x-yaml": {
                     "schema": ETLConfig.model_json_schema(),
                     "examples": {
-                        "example-1": {
-                            "summary": "Пример конфигурации для Amplitude Web",
+                        "example-s3": {
+                            "summary": "S3 + ZIP/NDJSON",
                             "value": {
                                 "source": {
                                     "type": "s3",
@@ -73,80 +81,160 @@ router = APIRouter()
                                     }
                                 ],
                             },
-                        }
+                        },
+                        "example-yandex-metrika": {
+                            "summary": "Яндекс.Метрика (нормализованные таблицы)",
+                            "value": {
+                                "source": {
+                                    "type": "yandex_metrika",
+                                    "counter_id": 106613495,
+                                    "date_from": "2026-02-01",
+                                    "date_to": "2026-02-07",
+                                    "source": "hits",
+                                    "fields": [
+                                        "ym:pv:watchID",
+                                        "ym:pv:clientID",
+                                        "ym:pv:dateTime",
+                                        "ym:pv:URL",
+                                    ],
+                                    "chunk_days": 7,
+                                },
+                                "tables": [
+                                    {
+                                        "name": "yandex_metrika.events",
+                                        "batch_size": 5000,
+                                        "fields": [
+                                            {
+                                                "target": "watch_id",
+                                                "sources": ["watchID"],
+                                                "type": "integer",
+                                            },
+                                            {
+                                                "target": "client_id",
+                                                "sources": ["clientID"],
+                                                "type": "integer",
+                                            },
+                                        ],
+                                    }
+                                ],
+                            },
+                        },
+                        "example-appmetrica": {
+                            "summary": "AppMetrica (CSV/JSON)",
+                            "value": {
+                                "source": {
+                                    "type": "appmetrica",
+                                    "application_id": 473434,
+                                    "date_since": "2026-05-01",
+                                    "date_until": "2026-05-07",
+                                    "export_format": "csv",
+                                    "fields": [
+                                        "event_datetime",
+                                        "event_json",
+                                        "profile_id",
+                                        "event_name",
+                                    ],
+                                    "chunk_days": 7,
+                                },
+                                "tables": [
+                                    {
+                                        "name": "appmetrica.events",
+                                        "batch_size": 5000,
+                                        "fields": [
+                                            {
+                                                "target": "event_time",
+                                                "sources": ["event_datetime"],
+                                                "type": "datetime",
+                                            },
+                                            {
+                                                "target": "event_data",
+                                                "sources": ["event_json"],
+                                                "type": "json",
+                                            },
+                                            {
+                                                "target": "profile_id",
+                                                "sources": ["profile_id"],
+                                                "type": "string",
+                                            },
+                                        ],
+                                    }
+                                ],
+                            },
+                        },
                     },
                 }
             },
             "required": True,
-        }
+        },
     },
 )
-async def universal_transformer(
+async def etl_transformer(
     request: Request,
-    user=Depends(require_write),
+    start_after_file: str = Query(None, description="S3: S3-ключ файла"),
+    start_after_line: int = Query(0, description="S3: номер строки (0‑based)"),
+    start_date: str = Query(
+        None, description="Яндекс.Метрика / AppMetrica: дата возобновления YYYY-MM-DD"
+    ),
+    user: User = Depends(require_write),
 ):
-    """
-    Универсальный ETL-загрузчик.
-    """
-    # 1. Читаем тело как YAML
+    # 1. Проверка Content-Type
+    if "application/x-yaml" not in request.headers.get("Content-Type", ""):
+        raise HTTPException(415, "Content-Type must be application/x-yaml")
+
+    # 2. Чтение и парсинг YAML
     try:
-        raw_body = await request.body()
-        if not raw_body:
-            raise HTTPException(400, "Empty request body")
-        config_dict = yaml.safe_load(raw_body)
-        if not isinstance(config_dict, dict):
-            raise ValueError("YAML root must be an object")
+        body_bytes = await request.body()
+        config_yaml = body_bytes.decode("utf-8")
+        config_dict = yaml.safe_load(config_yaml)
+        etl_config = ETLConfig.model_validate(config_dict)
     except yaml.YAMLError as e:
-        raise HTTPException(422, detail=f"Invalid YAML syntax: {e}")
+        raise HTTPException(422, f"Invalid YAML: {str(e)}")
     except Exception as e:
-        raise HTTPException(400, detail=f"Failed to read request body: {e}")
+        raise HTTPException(422, f"Config validation error: {str(e)}")
 
-    # 2. Валидируем через Pydantic
-    try:
-        etl_config = ETLConfig(**config_dict)
-    except ValidationError as e:
-        raise HTTPException(422, detail=e.errors())
+    # 3. Извлечение OAuth-токена (для источников, требующих внешнего API)
+    token = _extract_oauth_token(request)
+    if etl_config.source.type in ("yandex_metrika", "appmetrica") and not token:
+        raise HTTPException(
+            status_code=401,
+            detail=f"OAuth token is required for {etl_config.source.type} source. "
+            "Provide Authorization header (Bearer <token> or OAuth <token>).",
+        )
 
-    # 3. Извлекаем параметры возобновления из query
-    start_after_file = request.query_params.get("start_after_file")
-    start_after_line_str = request.query_params.get("start_after_line", "0")
-    try:
-        start_after_line = int(start_after_line_str)
-        if start_after_line < 0:
-            raise ValueError
-    except ValueError:
-        raise HTTPException(400, "start_after_line must be a non-negative integer")
-
+    # 4. Параметры возобновления
     source_params = {}
     if start_after_file:
         source_params["start_after_file"] = start_after_file
     if start_after_line:
         source_params["start_after_line"] = start_after_line
+    if start_date:
+        source_params["start_date"] = start_date
 
-    # 4. Запускаем ETL с объектом конфигурации (не строкой)
+    # 5. Запуск ETL
     try:
-        stats = process_universal_etl(etl_config, source_params=source_params or None)
-        return JSONResponse(
-            status_code=200,
-            content={
-                "status": "success",
-                "message": "ETL completed",
-                "statistics": stats,
-            },
+        stats = await process_universal_etl(
+            etl_config=etl_config,
+            source_params=source_params or None,
+            token=token,
+        )
+        return TransformResponse(
+            status="success",
+            message="ETL completed",
+            statistics=dict(stats["batches"]),
         )
     except ProcessingInterrupted as e:
-        return JSONResponse(
-            status_code=200,
-            content={
-                "status": "interrupted",
-                "message": e.message,
-                "failed_file": e.failed_file,
-                "failed_line": e.failed_line,
-                "last_successful_file": e.last_successful_file,
-                "last_successful_line": e.last_successful_line,
-                "error_details": e.error_details,
-            },
+        logger.warning(f"ETL interrupted: {e.message}")
+        return TransformResponse(
+            status="interrupted",
+            message=e.message,
+            last_successful_file=e.last_successful_file,
+            last_successful_line=e.last_successful_line,
+            failed_file=e.failed_file,
+            failed_line=e.failed_line,
+            error_details=e.error_details,
+            last_successful_date=e.last_successful_date,
+            failed_date=e.failed_date,
         )
     except Exception as e:
-        logger.exception("Unexpected error in universal ETL")
-        raise HTTPException(500, detail=f"Internal server error: {str(e)}")
+        logger.exception("Unexpected ETL error")
+        raise HTTPException(status_code=500, detail=str(e))

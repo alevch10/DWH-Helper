@@ -47,18 +47,18 @@
 
 ### Репозиторий (repository)
 - Общие методы: `insert_one`, `insert_batch`, `select`, `get_by_pk`.
-- `insert_batch` автоматически разбивает данные по протокольному лимиту PostgreSQL (65 535 параметров).
+- `insert_batch` автоматически разбивает данные по протокольному лимиту PostgreSQL (65 535 параметров).
 - Динамический расчёт `max_rows` на основе количества полей в модели и настройки `max_rows_per_insert`.
 - `RETURNING` для получения ID вставленных записей.
 - Подсчёт батчей и возврат вместе с ID.
 - Поддержка `ON CONFLICT` (`DO NOTHING` / `DO UPDATE`).
-- Специфические методы:
-  - `get_all_permanent_ehr_ids()`
-  - `get_existing_permanent(ehr_ids)`
-  - `get_latest_changeable_for_ehrs(ehr_ids)`
-  - `insert_changeable(record)`
-  - `update_migrated_tmp(uuid, migrated)`
-  - `update_migrated_batch(uuids, migrated)`
+- **Новое: поддержка внешних транзакций** – методы `insert_batch` и `upsert_batch` принимают опциональный параметр `conn`.  
+  Если передан, запрос выполняется в контексте этого соединения, и соединение не возвращается в пул.  
+  Для управления транзакцией добавлены:
+  - `get_raw_connection()` – получить соединение с `autocommit = False`.
+  - `commit(conn)` – зафиксировать и вернуть соединение в пул.
+  - `rollback(conn)` – откатить и вернуть соединение в пул.
+- Обратная совместимость: при вызове без `conn` поведение полностью идентично предыдущим версиям.
 
 ---
 

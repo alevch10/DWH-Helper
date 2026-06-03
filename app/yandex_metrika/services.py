@@ -7,7 +7,7 @@ import os
 import shutil
 
 from pathlib import Path
-from typing import Callable, List
+from typing import Callable, List, AsyncGenerator, Dict, List
 from fastapi import HTTPException
 
 from app.config.logger import get_logger
@@ -299,5 +299,63 @@ async def get_metrika_hits(
     except Exception as e:
         logger.exception("Ошибка при получении хитов из Метрики")
         raise
+    finally:
+        await client.close()
+
+
+async def stream_metrika_lines(
+    token, counter_id, date1, date2, source, fields
+) -> AsyncGenerator[Dict[str, str], None]:
+    client = MetrikaClient(token)
+    try:
+        request_id, parts = await _initialize_log_request(
+            client, counter_id, date1, date2, fields, source
+        )
+
+        first_part_content = await client.download_part(counter_id, request_id, 0)
+        first_lines = first_part_content.decode("utf-8", errors="replace").splitlines()
+        logger.info(
+            "Первая часть содержит %d строк (включая заголовок)", len(first_lines)
+        )
+        if not first_lines:
+            logger.warning("Первая часть пуста")
+            return
+
+        header_line_raw = first_lines[0]
+        headers = header_line_raw.split("\t")
+        clean_headers = [
+            h.replace("ym:pv:", "").replace("from", "from_") for h in headers
+        ]
+        logger.info("Заголовки нормализованы: %d полей", len(clean_headers))
+
+        # Логируем первую строку данных для проверки
+        if len(first_lines) > 1:
+            sample_line = first_lines[1][:200]
+            logger.info("Пример первой строки данных: %s", sample_line)
+
+        for line in first_lines[1:]:
+            row_dict = _parse_line_to_dict(line, header_line_raw, clean_headers)
+            if row_dict:
+                yield row_dict
+
+        for part in parts[1:]:
+            buffer = b""
+            async for chunk in client.download_part_stream(
+                counter_id, request_id, part["part_number"]
+            ):
+                buffer += chunk
+                while b"\n" in buffer:
+                    line_bytes, buffer = buffer.split(b"\n", 1)
+                    line = line_bytes.decode("utf-8", errors="replace")
+                    row_dict = _parse_line_to_dict(line, header_line_raw, clean_headers)
+                    if row_dict:
+                        yield row_dict
+            if buffer:
+                line = buffer.decode("utf-8", errors="replace")
+                row_dict = _parse_line_to_dict(line, header_line_raw, clean_headers)
+                if row_dict:
+                    yield row_dict
+
+        await client.clean_logrequest(counter_id, request_id)
     finally:
         await client.close()
