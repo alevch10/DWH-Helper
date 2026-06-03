@@ -9,6 +9,12 @@ class SourceParams(BaseModel):
     start_after_line: Optional[int] = Field(
         0, description="Номер строки внутри файла (0-based)"
     )
+    start_date: Optional[str] = Field(
+        None,
+        description="Для источника yandex_metrika: дата, с которой начать (YYYY-MM-DD). "
+        "Используется при возобновлении после ошибки.",
+        pattern=r"^\d{4}-\d{2}-\d{2}$",
+    )
 
 
 class TransformRequest(BaseModel):

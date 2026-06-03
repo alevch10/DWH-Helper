@@ -18,6 +18,7 @@ class DBRepository:
     """
     Единый репозиторий для работы с PostgreSQL.
     Использует пул соединений с autocommit = True.
+    Поддерживает передачу внешнего соединения для транзакций.
     """
 
     TABLE_MODEL_MAP = {
@@ -39,7 +40,7 @@ class DBRepository:
         "yandex_metrika.ym_user_paths": "UserPath",
         "yandex_metrika.ym_call_data": "CallData",
         "yandex_metrika.ym_page_transitions": "PageTransition",
-        # Amplitude
+        # Amplitude Web
         "amplitude_web.events": db_schemas.AmplitudeWebEvent,
         "amplitude_web.event_properties": db_schemas.AmplitudeWebEventProperties,
         "amplitude_web.locations": db_schemas.AmplitudeWebLocation,
@@ -120,6 +121,26 @@ class DBRepository:
         """Вернуть соединение в пул."""
         self.pool.putconn(conn)
 
+    def get_raw_connection(self):
+        """
+        Возвращает сырое соединение без autocommit для использования в транзакциях.
+        Вызывающий код должен сам управлять транзакцией (commit/rollback) и вернуть соединение в пул
+        через вызов commit() или rollback().
+        """
+        conn = self.pool.getconn()
+        conn.autocommit = False
+        return conn
+
+    def commit(self, conn):
+        """Фиксирует транзакцию и возвращает соединение в пул."""
+        conn.commit()
+        self._put_conn(conn)
+
+    def rollback(self, conn):
+        """Откатывает транзакцию и возвращает соединение в пул."""
+        conn.rollback()
+        self._put_conn(conn)
+
     def execute(self, query: str, params: tuple = None) -> List[Dict[str, Any]]:
         """
         Выполнить запрос и вернуть результат.
@@ -193,6 +214,7 @@ class DBRepository:
         on_conflict: Optional[str] = None,
         conflict_target: Optional[str] = None,
         returning_column: Optional[str] = None,
+        conn=None,  # новое: внешнее соединение для транзакций
     ) -> Tuple[List[str], int]:
         """
         Вставка множества строк с автоматическим разбиением по лимиту параметров.
@@ -208,7 +230,7 @@ class DBRepository:
         for i in range(0, len(rows), max_rows_per_batch):
             chunk = rows[i : i + max_rows_per_batch]
             ids = self._insert_batch_query(
-                table, chunk, on_conflict, conflict_target, returning_column
+                table, chunk, on_conflict, conflict_target, returning_column, conn=conn
             )
             all_inserted_ids.extend(ids)
             batches_used += 1
@@ -222,6 +244,7 @@ class DBRepository:
         on_conflict: Optional[str],
         conflict_target: Optional[str],
         returning_column: Optional[str] = None,
+        conn=None,  # новое
     ) -> List[str]:
         """
         Выполняет INSERT ... VALUES (...), (...) ...
@@ -251,18 +274,26 @@ class DBRepository:
         if returning_column:
             query += f" RETURNING {returning_column}"
 
-        conn = self._get_conn()
-        try:
+        if conn:
+            # Используем внешнее соединение (транзакция)
             with conn.cursor() as cur:
                 cur.execute(query, params)
                 if returning_column:
                     rows = cur.fetchall()
-                    inserted_ids = [str(row[returning_column]) for row in rows]
-                else:
-                    inserted_ids = []
-                return inserted_ids
-        finally:
-            self._put_conn(conn)
+                    return [str(row[returning_column]) for row in rows]
+                return []
+        else:
+            # Старая логика с получением и возвратом соединения
+            conn_local = self._get_conn()
+            try:
+                with conn_local.cursor() as cur:
+                    cur.execute(query, params)
+                    if returning_column:
+                        rows = cur.fetchall()
+                        return [str(row[returning_column]) for row in rows]
+                    return []
+            finally:
+                self._put_conn(conn_local)
 
     # ---------- Выборка данных ----------
     def select(
@@ -426,6 +457,7 @@ class DBRepository:
         conflict_target: str,
         set_clause: str,
         returning_column: Optional[str] = None,
+        conn=None,  # новое
     ) -> Tuple[List[str], int]:
         """
         Выполняет INSERT ... ON CONFLICT (conflict_target) DO UPDATE SET set_clause.
@@ -439,7 +471,7 @@ class DBRepository:
         for i in range(0, len(rows), max_rows_per_batch):
             chunk = rows[i : i + max_rows_per_batch]
             ids = self._upsert_batch_query(
-                table, chunk, conflict_target, set_clause, returning_column
+                table, chunk, conflict_target, set_clause, returning_column, conn=conn
             )
             all_ids.extend(ids)
             batches_used += 1
@@ -452,6 +484,7 @@ class DBRepository:
         conflict_target: str,
         set_clause: str,
         returning_column: Optional[str],
+        conn=None,  # новое
     ) -> List[str]:
         if not rows:
             return []
@@ -471,16 +504,25 @@ class DBRepository:
         """
         if returning_column:
             query += f" RETURNING {returning_column}"
-        conn = self._get_conn()
-        try:
+
+        if conn:
             with conn.cursor() as cur:
                 cur.execute(query, params)
                 if returning_column:
                     rows = cur.fetchall()
                     return [str(row[returning_column]) for row in rows]
                 return []
-        finally:
-            self._put_conn(conn)
+        else:
+            conn_local = self._get_conn()
+            try:
+                with conn_local.cursor() as cur:
+                    cur.execute(query, params)
+                    if returning_column:
+                        rows = cur.fetchall()
+                        return [str(row[returning_column]) for row in rows]
+                    return []
+            finally:
+                self._put_conn(conn_local)
 
 
 # ---------- Глобальный синглтон ----------

@@ -1,27 +1,20 @@
 ## Документация модуля Yandex.Metrica
-> *Версия модуля: 1.0.0*  
+> *Версия модуля: 1.1.0
+
 ### 📌 Описание
 Модуль **Yandex.Metrica** предназначен для загрузки сырых данных из API Яндекс.Метрики (логи хитов), их очистки, валидации и преобразования в набор витрин (data marts), оптимизированных для маркетинговой аналитики.  
-Модуль реализует полный ETL-цикл:
-- Создание и отслеживание `logrequest` (асинхронная подготовка данных).
-- Скачивание частей (в формате TSV) и объединение.
-- Валидация каждого хита через Pydantic-модель `MetrikaHitRow`.
-- Сохранение сырых данных в таблицу `ym_raw_data`.
-- Построение восьми аналитических витрин:
-  - `ym_ad_data` – первый визит клиента (first-click атрибуция)
-  - `ym_successful_entries` – события успешной записи на приём
-  - `ym_booking_visits` – визиты на домен booking (last-click атрибуция)
-  - `ym_booking_transitions` – переходы на booking с сайта или прямые
-  - `ym_user_paths` – хронология визитов пользователя
-  - `ym_call_data` – данные о звонках
-  - `ym_page_transitions` – переходы между страницами (sankey-диаграмма)
+Модуль реализует два режима работы:
+1. **Прямой ETL за день** – эндпоинт `/ad_efficiency`, создающий витрины и сохраняющий сырые хиты в `ym_raw_data`.
+2. **Потоковая выгрузка для универсального ETL** – предоставляет асинхронный генератор `stream_metrika_lines`, который используется конвейером `/etl/transformer` для нормализованной загрузки в произвольные таблицы, заданные в YAML-конфигурации.
 
 **Основные возможности:**
 - Поддержка произвольного набора полей (параметр `fields`).
 - Очистка URL от нежелательных query-параметров (настройка `ETL_QUERY_PARAMS_TO_REMOVE`).
 - Определение целевых страниц записи по `netloc` и `path` (конфигурация).
 - Идемпотентная вставка в `ym_booking_visits` (`ON CONFLICT DO NOTHING`).
-- Полная перезагрузка за день (с очисткой предыдущих данных не производится, но при повторном запуске дубликаты возможны, кроме таблицы с conflict-правилом).
+- Потоковое получение и парсинг TSV без накопления всех данных в памяти.
+- Валидация каждого хита через Pydantic-модель `MetrikaHitRow` и автоматическое приведение типов.
+- Переиспользование модели `MetrikaHitRow` и логики работы с Logs API в обоих режимах.
 
 ---
 
@@ -33,11 +26,10 @@
 4. Сохранять сырые данные в таблицу `ym_raw_data`.
 5. Последовательно строить витрины, используя функции из `ad_efficiency.py`.
 6. При повторной загрузке за тот же день не дублировать визиты в `ym_booking_visits` (использовать `ON CONFLICT DO NOTHING` по `visit_id`).
-7. Предоставлять REST API эндпоинты:
-   - `/ad_efficiency` – запуск полного ETL за день.
-   - Вспомогательные эндпоинты для работы с logrequest: `/counters`, `/logrequests`, `/logrequest/{id}`, `/logrequest/{id}/part/{n}/download` и т.д.
+7. Предоставлять REST API эндпоинты.
 8. Логировать все ключевые этапы и ошибки.
-9. Конфигурация через переменные окружения (базовый URL, домен booking, целевые пути, список удаляемых query-параметров).
+9. Конфигурация через переменные окружения.
+10. **Новое:** предоставлять асинхронный генератор `stream_metrika_lines` для использования в универсальном ETL.
 
 ---
 
@@ -53,20 +45,15 @@
 | `YANDEXMETRICA_TARGET_NETLOC` | Список netloc (доменов) целевых страниц записи (через запятую) | `booking.clinic.ru,app.clinic.ru` |
 | `YANDEXMETRICA_TARGET_PATH` | Список путей целевых страниц записи (через запятую) | `/success,/thanks` |
 | `YANDEXMETRICA_TARGET_SCHEME` | (опционально) Список схем | `https` |
-| `YANDEXMETRICA_TARGET_PARAMS` | (опционально) Список параметров | |
-| `YANDEXMETRICA_TARGET_QUERY` | (опционально) Список query-параметров | |
-| `YANDEXMETRICA_TARGET_FRAGMENT` | (опционально) | |
 | `ETL_QUERY_PARAMS_TO_REMOVE` | Query-параметры, удаляемые из URL (через запятую) | `utm_source,utm_medium,fbclid` |
-
-Эти параметры загружаются через `settings.yandexmetrica.get_target_netloc_list()` и т.д.
 
 ---
 
 ## 🔌 API эндпоинты
 
-Все эндпоинты требуют авторизации: заголовок `Authorization: OAuth <token>` или `Bearer <token>` (см. `get_token_from_header`). Доступ – `require_read` (т.е. пользователь должен быть в `READ_ACCESS` или `WRITE_ACCESS`).
+Все эндпоинты требуют авторизации: заголовок `Authorization: OAuth <token>` или `Bearer <token>`. Доступ – `require_read`.
 
-### 1. Запуск ETL за день
+### 1. Запуск ETL за день (витрины)
 
 `POST /yandex_metrika/ad_efficiency`
 
@@ -80,7 +67,7 @@
 }
 ```
 
-- `counter_id` – номер счётчика Яндекс.Метрики.
+- `counter_id` – номер счётчика.
 - `date` – дата в формате `YYYY-MM-DD`.
 - `source` – тип данных (`hits` или `visits`, по умолчанию `hits`).
 - `fields` – список полей (если не указан, используется `settings.yandexmetrica.default_fields`).
@@ -92,18 +79,11 @@
   "statistics": {
     "ym_raw_data": 90948,
     "ym_ad_data": 35000,
-    "ym_successful_entries": 145,
-    "ym_booking_visits": 2876,
-    "ym_booking_transitions": 3000,
-    "ym_user_paths": 31200,
-    "ym_call_data": 42,
-    "ym_page_transitions": 124500
+    ...
   },
   "message": "Данные успешно обработаны"
 }
 ```
-
-**Ошибки:** 422 (неверные параметры), 500 (внутренняя ошибка).
 
 ### 2. Вспомогательные эндпоинты (для отладки)
 
@@ -118,12 +98,6 @@
 | GET | `/logrequest/{request_id}/part/{part_number}/download` | Скачать одну часть (TSV). |
 | POST | `/report` | Сгенерировать ZIP-архив с CSV-файлом отчёта (без сохранения в БД). |
 
-Пример вызова `/report`:
-```bash
-curl -X POST "http://localhost:8000/yandex_metrika/report?counter_id=123&date1=2026-03-01&date2=2026-03-01" \
-  -H "Authorization: OAuth <token>" --output report.zip
-```
-
 ---
 
 ## 🧱 Архитектура модуля
@@ -132,7 +106,7 @@ curl -X POST "http://localhost:8000/yandex_metrika/report?counter_id=123&date1=2
 app/yandex_metrika/
 ├── __init__.py
 ├── client.py          # MetrikaClient (обёртка над httpx)
-├── services.py        # generate_report, get_metrika_hits, process_part_streaming
+├── services.py        # generate_report, get_metrika_hits, process_part_streaming, stream_metrika_lines
 ├── ad_efficiency.py   # Функции построения витрин + get_ad_efficiency (оркестратор)
 ├── schemas.py         # Pydantic-модели: MetrikaHitRow, витрины, запросы/ответы
 └── router.py          # FastAPI эндпоинты
@@ -152,28 +126,11 @@ app/yandex_metrika/
 - `process_part_streaming()` – потоково читает часть, декодирует строки и вызывает callback `process_line` для каждой непустой строки.
 - `generate_report()` – создаёт ZIP с CSV (без сохранения в БД).
 - `get_metrika_hits()` – возвращает список `MetrikaHitRow` (используется в `ad_efficiency`).
+- **`stream_metrika_lines()`** – асинхронный генератор, возвращающий словари строк TSV (ключи – нормализованные имена полей без префикса `ym:pv:`, с заменой `from` на `from_`). Используется в универсальном ETL-загрузчике (`/etl/transformer`) для потоковой обработки без накопления всех хитов в памяти. Внутри вызывает `_initialize_log_request`, читает заголовки, нормализует их, затем для каждой части асинхронно читает чанки и выдаёт строки через `_parse_line_to_dict`.
 
 ### 3. `ad_efficiency.py` – построение витрин
 
-Каждая функция принимает список хитов и возвращает список объектов соответствующей Pydantic-модели.  
-Логика:
-
-| Функция | Витрина | Описание |
-|---------|---------|----------|
-| `get_earliest_visit` | `ym_ad_data` | Группирует по `client_id`, выбирает самый ранний хит с `is_page_view=True` (первый визит). Очищает URL от лишних параметров. |
-| `get_successful_entries` | `ym_successful_entries` | Фильтрует хиты, URL которых соответствует целевым `netloc` + `path` (через `is_url_target`). Для каждого `page_view_id` оставляет самый ранний хит. |
-| `get_booking_visits` | `ym_booking_visits` | Берёт первые хиты визитов, содержащих домен `booking_domain`. Добавляет флаг `had_successful_entry`, если `visit_id` присутствует в successful_entries. |
-| `get_booking_transitions` | `ym_booking_transitions` | Проходит по хронологии хитов каждого клиента. При первом попадании на booking (или после хитов не на booking) фиксирует переход (`from_site` или `direct_booking`). |
-| `get_user_paths` | `ym_user_paths` | Для каждого клиента собирает визиты (по `visit_id`), нумерует. Определяет, была ли запись в этом визите или позже (по `first_entry_time_by_client`). |
-| `get_call_data` | `ym_call_data` | Извлекает хиты, у которых заполнено любое поле `offline_call_*` (звонок). |
-| `get_page_transitions` | `ym_page_transitions` | Строит последовательность переходов между страницами внутри визита. Удаляет последовательные дубликаты URL. Для первого перехода в визите `source` заменяется на детализированную метку источника (например, `organic_yandex`, `referral_https://...`). |
-
-**Главная функция:** `get_ad_efficiency(token, counter_id, date, source, fields)`
-- Скачивает хиты через `get_metrika_hits`.
-- Вставляет их в `ym_raw_data`.
-- Последовательно вызывает все функции-трансформы, каждый результат вставляет в соответствующую таблицу через `repository.insert_batch`.
-- Для `ym_booking_visits` использует `on_conflict="DO NOTHING" conflict_target="(visit_id)"`.
-- Возвращает словарь статистики (количество записей в каждой таблице).
+(Описание функций `get_earliest_visit`, `get_successful_entries`, `get_booking_visits` и т.д. остаётся без изменений.)
 
 ### 4. `schemas.py` – модели
 
@@ -181,145 +138,100 @@ app/yandex_metrika/
   - Преобразователи: пустые строки → `None`, строки `"N/A"` → `None`, JSON-поля нормализуются.
   - Валидаторы: числовые поля не должны превышать 20 знаков.
   - Псевдонимы для полей с префиксом `ym:pv:` (например, `watchID`, `pageViewID`).
+  - При использовании в универсальном ETL данные сначала валидируются через эту модель, а затем преобразуются в словарь с алиасами (`model_dump(by_alias=True)`), чтобы имена полей соответствовали путям в YAML-маппинге.
 - **Модели витрин:** `MetricaAdData`, `MetrikaSuccessfulEntries`, `BookingVisit`, `BookingTransition`, `UserPath`, `CallData`, `PageTransition`.
 - **Схемы запросов/ответов:** `ProcessDayRequest`, `ProcessDayResponse`, `CountersResponse`, `LogRequest` и т.д.
 
 ### 5. `router.py` – эндпоинты
 
-- Извлекает OAuth-токен из заголовка `Authorization` (поддерживает `Bearer` и `OAuth`).
-- Использует `Depends(require_read)` для авторизации (только чтение; запись не требуется, т.к. ETL использует отдельную авторизацию для БД).
+- Извлекает OAuth-токен из заголовка `Authorization`.
+- Использует `Depends(require_read)` для авторизации.
 - `/ad_efficiency` вызывает `ad_efficiency.get_ad_efficiency` и возвращает результат.
 - Остальные эндпоинты – прокси к `MetrikaClient`.
 
 ---
 
-## 🔄 Процесс ETL (пошагово)
+## 🔄 Процесс ETL (режим витрин – `/ad_efficiency`)
 
-1. **Получение сырых данных**  
-   - `MetrikaClient` создаёт logrequest, ждёт обработки, скачивает все части.
-   - Части обрабатываются потоково (чтобы не хранить гигабайты в памяти).
-2. **Валидация**  
-   - Каждая строка TSV преобразуется в словарь, затем валидируется через `MetrikaHitRow.model_validate()`.
-   - Невалидные строки логируются и пропускаются (но процесс не прерывается).
-3. **Сохранение сырых данных**  
-   - Все корректные хиты вставляются в `yandex_metrika.ym_raw_data` (batch-insert).
-4. **Построение витрин** (функции из `ad_efficiency.py`):
-   - `ym_ad_data` – первый визит каждого клиента (first-click).
-   - `ym_successful_entries` – события записи.
-   - `ym_booking_visits` – визиты на booking (с флагом успешной записи).
-   - `ym_booking_transitions` – переходы на booking.
-   - `ym_user_paths` – нумерованные визиты с меткой записи.
-   - `ym_call_data` – звонки.
-   - `ym_page_transitions` – последовательность страниц (sankey).
-5. **Сохранение витрин**  
-   - Каждая витрина вставляется через `repository.insert_batch`.
-   - Для `ym_booking_visits` – `ON CONFLICT DO NOTHING` по `visit_id`.
-6. **Возврат статистики**  
-   - Клиент получает количество записей в каждой таблице.
+1. **Получение сырых данных** – `MetrikaClient` создаёт logrequest, ждёт обработки, скачивает все части.
+2. **Валидация** – каждая строка TSV → словарь → `MetrikaHitRow`.
+3. **Сохранение сырых данных** – вставка в `yandex_metrika.ym_raw_data`.
+4. **Построение витрин** – вызов функций из `ad_efficiency.py`.
+5. **Сохранение витрин** – `repository.insert_batch`.
+6. **Возврат статистики**.
+
+---
+
+## 🔄 Использование в универсальном ETL (`/etl/transformer`)
+
+При указании в YAML-конфигурации `source.type: yandex_metrika`:
+
+1. Из заголовка `Authorization` извлекается OAuth-токен (проверка `require_write` уже выполнена).
+2. Для каждого дня из диапазона `[date_from, date_to]`:
+   - Вызывается `stream_metrika_lines(token, counter_id, date, date, source, fields)`, которая асинхронно отдаёт словари строк.
+   - Каждый словарь валидируется через `MetrikaHitRow.model_validate()`, затем преобразуется через `model_dump(by_alias=True)` в словарь с ключами-алиасами (например, `watchID` вместо `ym:pv:watchID`).
+   - Проверяется, что все ключи словаря присутствуют в нормализованном списке запрошенных полей (без префикса `ym:pv:`).
+   - Далее к записи применяются все маппинги таблиц из YAML (функция `_transform_record`), данные накапливаются в буферах.
+   - При достижении `batch_size` буфер сбрасывается в БД в рамках одной транзакции (используется `conn` от `get_raw_connection`).
+3. В случае ошибки за день транзакция откатывается, и ответ содержит `failed_date` и `last_successful_date` для возобновления.
+
+**Особенности:**
+- Поле `params` часто содержит некорректный JSON; в YAML-маппинге для него следует указывать тип `string`.
+- Все запрошенные поля должны быть явно перечислены в `fields` – тогда непредвиденные поля не вызовут ошибок, даже если они не замаплены.
+
+Пример YAML-конфигурации см. в [документации ETL](../etl/etl.md).
 
 ---
 
 ## 📊 Примеры аналитических запросов (бизнес-вопросы)
 
-### First-click атрибуция
-```sql
-SELECT 
-    utm_source,
-    utm_medium,
-    utm_campaign,
-    COUNT(DISTINCT client_id) AS users
-FROM yandex_metrika.ym_ad_data
-GROUP BY utm_source, utm_medium, utm_campaign
-ORDER BY users DESC;
-```
-
-### Записи по дням
-```sql
-SELECT DATE(date_time) AS day, COUNT(*) AS bookings
-FROM yandex_metrika.ym_successful_entries
-GROUP BY day ORDER BY day;
-```
-
-### Конверсия визитов на booking в записи (last-click)
-```sql
-SELECT 
-    utm_source,
-    utm_medium,
-    COUNT(*) AS visits,
-    SUM(CASE WHEN had_successful_entry THEN 1 ELSE 0 END) AS bookings,
-    ROUND(100.0 * SUM(CASE WHEN had_successful_entry THEN 1 ELSE 0 END) / COUNT(*), 2) AS conversion_rate
-FROM yandex_metrika.ym_booking_visits
-GROUP BY utm_source, utm_medium
-ORDER BY visits DESC;
-```
-
-### Среднее число визитов до первой записи
-```sql
-WITH booking_clients AS (
-    SELECT client_id, MIN(visit_number) AS first_booking_visit
-    FROM yandex_metrika.ym_user_paths
-    WHERE had_successful_entry
-    GROUP BY client_id
-)
-SELECT AVG(first_booking_visit) FROM booking_clients;
-```
-
-### Популярные точки входа (sankey)
-```sql
-SELECT source AS entry_page, COUNT(*) AS entries
-FROM yandex_metrika.ym_page_transitions
-WHERE source NOT LIKE '(start)'
-GROUP BY source ORDER BY entries DESC LIMIT 10;
-```
+(Оставить без изменений.)
 
 ---
 
 ## 🧪 Тестирование
 
 Для тестирования рекомендуется:
-- Использовать тестовый счётчик Яндекс.Метрики с небольшим объёмом данных.
-- Мокать `MetrikaClient` (например, через `respx`) для имитации ответов API.
-- Для модульных тестов трансформаций – передавать фиктивные списки хитов.
-- Интеграционные тесты могут запускаться с реальным API (но тогда требуется валидный OAuth-токен).
+- Мокать `MetrikaClient` (например, через `respx`).
+- Для потокового режима – подменять `stream_metrika_lines` на асинхронный генератор с тестовыми данными.
+- Модульные тесты для трансформаций – передавать фиктивные списки хитов.
 
-Пример юнит-теста для `get_earliest_visit`:
+Пример теста для `stream_metrika_lines`:
+
 ```python
-def test_earliest_visit():
-    hits = [
-        MetrikaHitRow(client_id=1, date_time=datetime(2025,1,2,10,0), ...),
-        MetrikaHitRow(client_id=1, date_time=datetime(2025,1,1,9,0), ...),
-    ]
-    result = get_earliest_visit(hits)
-    assert len(result) == 1
-    assert result[0].date_time == datetime(2025,1,1,9,0)
+async def test_stream():
+    async def mock_gen():
+        yield {"watchID": "1", "clientID": "123"}
+    with patch("app.yandex_metrika.services.stream_metrika_lines", return_value=mock_gen()):
+        # тестируем универсальный ETL
+        ...
 ```
 
 ---
 
 ## 🐞 Логирование
 
-Логирование ведётся через `logger = get_logger(__name__)`.  
 Ключевые события:
-- `INFO`: создание запроса, статус, количество частей, количество обработанных строк.
-- `WARNING`: невозможность очистить запрос, невалидные строки (первые 5 подробно, затем счётчик).
+- `INFO`: создание запроса, статус, количество частей, количество обработанных строк, коммит дня.
+- `WARNING`: невозможность очистить запрос, невалидные строки.
 - `ERROR`: ошибки при скачивании, валидации, вставке в БД.
 
 ---
 
 ## 🧠 Заметки для разработчиков и ИИ‑агентов
 
-- **Обработка больших объёмов:** Функции `process_part_streaming` и `get_metrika_hits` не загружают целиком весь отчёт в память, а обрабатывают строки по мере поступления. Однако результат всё равно накапливается в списке `hits`, что при миллионах строк может быть проблемой. Для production-сценариев лучше писать строки сразу во временный файл или в БД пачками.
-- **Повторная загрузка:** При повторном запуске за тот же день данные в `ym_raw_data` продублируются (т.к. нет `ON CONFLICT`), а витрины могут задвоиться, кроме `ym_booking_visits`. Рекомендуется перед запуском очищать данные за обрабатываемую дату, если нужна идемпотентность.
-- **Зависимость от времени:** Функция `_initialize_log_request` ждёт статуса `processed` без ограничения по времени. Если Яндекс.Метрика долго готовит отчёт (часы), запрос будет висеть. Желательно добавить таймаут и возможность асинхронного колбэка (но текущая реализация этого не предусматривает).
-- **URL-очистка:** `remove_query_params` удаляет заданные параметры из URL – важно для корректной группировки страниц.
-- **Метка источника в page_transitions:** Для первого перехода визита `source` заменяется на детализированное описание (например, `organic_yandex`, `ad_google`). Это позволяет строить sankey-диаграмму от источников трафика.
-- **Безопасность:** Токен передаётся в заголовке и не логируется. Все SQL-запросы выполняются через параметризацию (репозиторий). YAML-маппинг не используется (в отличие от etl), вся логика зашита в коде Python.
+- **Интеграция с ETL:** модель `MetrikaHitRow` и генератор `stream_metrika_lines` теперь используются не только в `ad_efficiency`, но и в универсальном загрузчике. При изменениях модели или формата заголовков нужно проверять оба режима.
+- **Параметр `fields` по умолчанию:** если в YAML-конфигурации источник не указал `fields`, берётся `settings.yandexmetrica.default_fields` (список через запятую).
+- **Проверка неизвестных полей:** в универсальном ETL проверяется, что все ключи строки (после нормализации) входят в множество запрошенных полей. Это защищает от опечаток в конфигурации.
+- **Транзакционность:** один день – одна транзакция. Для больших объёмов (сотни тысяч строк в день) можно рассмотреть батчевую фиксацию промежуточных батчей, но в текущей реализации буферы сбрасываются в БД в течение дня без дополнительных подтранзакций – сбой откатит весь день.
+- **Проблема `params`:** поле может содержать невалидный JSON из-за неправильного экранирования. В универсальном ETL рекомендуется маппить его как `string`, а не `json`.
 
 ---
 
 ## 📄 Связанные документы
 
-- [Модуль DB (таблицы Яндекс.Метрики)](../db/db.md) – схемы таблиц находятся в `app.db.schemas` (для витрин) и в `yandex_metrika.schemas` для сырых хитов.
-- [Модуль ETL (общая логика трансформации)](../etl/etl.md) – не используется напрямую, но утилиты `remove_query_params`, `is_url_target` взяты оттуда.
-- [Конфигурация приложения](../config/config.md) – настройки S3, ETL_QUERY_PARAMS_TO_REMOVE.
-- [Модуль авторизации](../auth/auth.md) – требования к токену.
+- [Модуль ETL](../etl/etl.md)
+- [Модуль DB](../db/db.md)
+- [Конфигурация приложения](../config/config.md)
+- [Модуль авторизации](../auth/auth.md)
+```

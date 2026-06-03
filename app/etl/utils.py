@@ -1,8 +1,9 @@
 import re
 import ipaddress
 import json
+import csv
 from datetime import datetime
-from typing import Any, Optional, List, Dict
+from typing import Any, Optional, List, Dict, Iterable
 from uuid import UUID
 
 
@@ -120,3 +121,28 @@ def find_unknown_keys(
                         )
                     )
     return unknown
+
+
+def parse_delimited_stream(
+    lines: Iterable[str], headers: List[str], delimiter: str = "\t"
+) -> List[Dict[str, str]]:
+    """
+    Разбирает строки с разделителями в список словарей.
+    Пустые строки пропускаются.
+    """
+    result = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        reader = csv.reader([line], delimiter=delimiter)
+        try:
+            values = next(reader)
+        except Exception:
+            continue
+        # Дополняем недостающие значения пустыми строками
+        if len(values) < len(headers):
+            values.extend([""] * (len(headers) - len(values)))
+        row = dict(zip(headers, values))
+        result.append(row)
+    return result
