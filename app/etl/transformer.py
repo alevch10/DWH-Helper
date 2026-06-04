@@ -185,23 +185,23 @@ def _parse_appmetrica_csv(csv_text: str) -> List[Dict[str, str]]:
     """Разбирает CSV-строку от AppMetrica, очищая заголовки от BOM и пробелов."""
     if not csv_text.strip():
         return []
-    if csv_text.startswith('\ufeff'):
+    if csv_text.startswith("\ufeff"):
         csv_text = csv_text[1:]
     reader = csv.reader(io.StringIO(csv_text))
     raw_headers = next(reader, [])
     if not raw_headers:
         return []
-    headers = [h.strip().strip('"').lstrip('\ufeff') for h in raw_headers]
+    headers = [h.strip().strip('"').lstrip("\ufeff") for h in raw_headers]
     logger.debug("AppMetrica CSV headers after cleaning: %s", headers)
     rows = []
     for row in reader:
         if not row:
             continue
         if len(row) < len(headers):
-            row.extend([''] * (len(headers) - len(row)))
+            row.extend([""] * (len(headers) - len(row)))
         record = {}
         for i, h in enumerate(headers):
-            value = row[i].strip().strip('"') if i < len(row) else ''
+            value = row[i].strip().strip('"') if i < len(row) else ""
             record[h] = value
         rows.append(record)
     return rows
@@ -412,9 +412,11 @@ async def _process_yandex_metrika_async(
                     raise ProcessingInterrupted(
                         f"Unexpected fields in response: {', '.join(sorted(unknown))}",
                         failed_date=current_start.strftime("%Y-%m-%d"),
-                        last_successful_date=(current_start - timedelta(days=1)).strftime(
-                            "%Y-%m-%d"
-                        ) if current_start > date_from else None,
+                        last_successful_date=(
+                            current_start - timedelta(days=1)
+                        ).strftime("%Y-%m-%d")
+                        if current_start > date_from
+                        else None,
                     )
 
                 try:
@@ -424,9 +426,11 @@ async def _process_yandex_metrika_async(
                     raise ProcessingInterrupted(
                         f"Validation error: {str(e)}",
                         failed_date=current_start.strftime("%Y-%m-%d"),
-                        last_successful_date=(current_start - timedelta(days=1)).strftime(
-                            "%Y-%m-%d"
-                        ) if current_start > date_from else None,
+                        last_successful_date=(
+                            current_start - timedelta(days=1)
+                        ).strftime("%Y-%m-%d")
+                        if current_start > date_from
+                        else None,
                     )
 
                 for table_cfg in tables_config:
@@ -435,9 +439,11 @@ async def _process_yandex_metrika_async(
                         raise ProcessingInterrupted(
                             f"Transformation errors: {'; '.join(errors)}",
                             failed_date=current_start.strftime("%Y-%m-%d"),
-                            last_successful_date=(current_start - timedelta(days=1)).strftime(
-                                "%Y-%m-%d"
-                            ) if current_start > date_from else None,
+                            last_successful_date=(
+                                current_start - timedelta(days=1)
+                            ).strftime("%Y-%m-%d")
+                            if current_start > date_from
+                            else None,
                         )
                     if data:
                         buffers[table_cfg.name].append(data)
@@ -449,13 +455,13 @@ async def _process_yandex_metrika_async(
                 stats["lines_processed"] += 1
 
             for table_cfg in tables_config:
-                flush_table_buffer(table_cfg, buffers, repo, stats, force=True, conn=conn)
+                flush_table_buffer(
+                    table_cfg, buffers, repo, stats, force=True, conn=conn
+                )
 
             repo.commit(conn)
             stats["files_processed"] += 1
-            logger.info(
-                f"Chunk {date1} -> {date2} committed, lines: {chunk_lines}"
-            )
+            logger.info(f"Chunk {date1} -> {date2} committed, lines: {chunk_lines}")
 
         except ProcessingInterrupted:
             repo.rollback(conn)
@@ -467,7 +473,9 @@ async def _process_yandex_metrika_async(
                 failed_date=current_start.strftime("%Y-%m-%d"),
                 last_successful_date=(current_start - timedelta(days=1)).strftime(
                     "%Y-%m-%d"
-                ) if current_start > date_from else None,
+                )
+                if current_start > date_from
+                else None,
             )
 
         current_start = chunk_end + timedelta(days=1)
@@ -528,7 +536,9 @@ async def _process_appmetrica_async(
         )
         date_since_str = current_start.strftime("%Y-%m-%d 00:00:00")
         date_until_str = chunk_end.strftime("%Y-%m-%d 23:59:59")
-        logger.info(f"Processing AppMetrica chunk: {date_since_str} -> {date_until_str}")
+        logger.info(
+            f"Processing AppMetrica chunk: {date_since_str} -> {date_until_str}"
+        )
 
         try:
             fetch_result = await client.fetch_export(
@@ -549,7 +559,9 @@ async def _process_appmetrica_async(
                 failed_date=current_start.strftime("%Y-%m-%d"),
                 last_successful_date=(current_start - timedelta(days=1)).strftime(
                     "%Y-%m-%d"
-                ) if current_start > date_from else None,
+                )
+                if current_start > date_from
+                else None,
             )
 
         if fetch_result["status"] != "ready":
@@ -558,7 +570,9 @@ async def _process_appmetrica_async(
                 failed_date=current_start.strftime("%Y-%m-%d"),
                 last_successful_date=(current_start - timedelta(days=1)).strftime(
                     "%Y-%m-%d"
-                ) if current_start > date_from else None,
+                )
+                if current_start > date_from
+                else None,
             )
 
         raw_data = fetch_result["result"]
@@ -588,9 +602,11 @@ async def _process_appmetrica_async(
                     raise ProcessingInterrupted(
                         f"Unexpected fields in record: {', '.join(sorted(unknown))}",
                         failed_date=current_start.strftime("%Y-%m-%d"),
-                        last_successful_date=(current_start - timedelta(days=1)).strftime(
-                            "%Y-%m-%d"
-                        ) if current_start > date_from else None,
+                        last_successful_date=(
+                            current_start - timedelta(days=1)
+                        ).strftime("%Y-%m-%d")
+                        if current_start > date_from
+                        else None,
                     )
 
                 for table_cfg in tables_config:
@@ -599,9 +615,11 @@ async def _process_appmetrica_async(
                         raise ProcessingInterrupted(
                             f"Transformation errors: {'; '.join(errors)}",
                             failed_date=current_start.strftime("%Y-%m-%d"),
-                            last_successful_date=(current_start - timedelta(days=1)).strftime(
-                                "%Y-%m-%d"
-                            ) if current_start > date_from else None,
+                            last_successful_date=(
+                                current_start - timedelta(days=1)
+                            ).strftime("%Y-%m-%d")
+                            if current_start > date_from
+                            else None,
                         )
                     if data:
                         buffers[table_cfg.name].append(data)
@@ -614,7 +632,9 @@ async def _process_appmetrica_async(
                 stats["lines_processed"] += 1
 
             for table_cfg in tables_config:
-                flush_table_buffer(table_cfg, buffers, repo, stats, force=True, conn=conn)
+                flush_table_buffer(
+                    table_cfg, buffers, repo, stats, force=True, conn=conn
+                )
 
             repo.commit(conn)
             stats["files_processed"] += 1
@@ -632,7 +652,9 @@ async def _process_appmetrica_async(
                 failed_date=current_start.strftime("%Y-%m-%d"),
                 last_successful_date=(current_start - timedelta(days=1)).strftime(
                     "%Y-%m-%d"
-                ) if current_start > date_from else None,
+                )
+                if current_start > date_from
+                else None,
             )
 
         current_start = chunk_end + timedelta(days=1)
