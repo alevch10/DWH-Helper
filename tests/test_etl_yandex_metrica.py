@@ -1,20 +1,12 @@
-import asyncio
 import pytest
-from datetime import date, datetime
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from datetime import date
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.etl.config_models import (
-    ETLConfig,
-    SourceYandexMetrikaConfig,
-    TableConfig,
-    FieldMapping,
-)
+from app.etl.config_models import ETLConfig
 from app.etl.transformer import (
     process_universal_etl,
     ProcessingInterrupted,
-    _process_yandex_metrika_async,
 )
-from app.yandex_metrika.schemas import MetrikaHitRow
 from app.db.repository import DBRepository
 
 
@@ -30,7 +22,7 @@ def valid_yandex_metrika_config():
                 "type": "yandex_metrika",
                 "counter_id": 123,
                 "date_from": "2026-06-01",
-                "date_to": "2026-06-02",  # два дня для тестов
+                "date_to": "2026-06-02",
                 "source": "hits",
                 "fields": [
                     "ym:pv:watchID",
@@ -38,6 +30,7 @@ def valid_yandex_metrika_config():
                     "ym:pv:dateTime",
                     "ym:pv:params",
                 ],
+                "chunk_days": 1,
             },
             "tables": [
                 {
