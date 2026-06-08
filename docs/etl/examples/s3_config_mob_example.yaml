@@ -1,0 +1,356 @@
+source:
+  type: s3
+  bucket: ef0075029599-amplitudedata/
+  prefix: tmp/
+  sort:
+    by: key
+    natural: true
+    order: asc
+
+tables:
+  - name: amplitude_mob.events
+    primary_key: [uuid, event_time]
+    on_conflict: DO NOTHING
+    update_strategy: always
+    fields:
+      - target: uuid
+        sources: ["uuid"]
+        type: uuid
+        required: true
+      - target: event_time
+        sources: ["event_time"]
+        type: datetime
+        required: true
+        format: iso
+      - target: session_id
+        sources: ["session_id"]
+        type: integer
+        required: true
+      - target: user_id
+        sources: ["user_id"]
+        type: integer
+        null_values: ["", "N/A", "-1", "Unauthorized*"]
+      - target: event_type
+        sources: ["event_type"]
+        type: string
+        required: true
+      - target: event_id
+        sources: ["event_id"]
+        type: integer
+        required: true
+      - target: device_id
+        sources: ["device_id"]
+        type: string
+        required: true
+      - target: version_name
+        sources: ["version_name"]
+        type: string
+
+      - target: _dummy
+        sources:
+          - "$insert_id"
+          - "$insert_key"
+          - "$schema"
+          - "adid"
+          - "amplitude_attribution_ids"
+          - "amplitude_event_type"
+          - "amplitude_id"
+          - "app"
+          - "client_event_time"
+          - "client_upload_time"
+          - "data"
+          - "data.first_event"
+          - "data.group_first_event"
+          - "data.group_ids"
+          - "data.user_properties_updated"
+          - "data.path"
+          - "data_type"
+          - "device_brand"
+          - "device_manufacturer"
+          - "device_model"
+          - "global_user_properties"
+          - "group_properties"
+          - "groups"
+          - "idfa"
+          - "is_attribution_event"
+          - "library"
+          - "partner_id"
+          - "paying"
+          - "plan"
+          - "processed_time"
+          - "sample_rate"
+          - "server_received_time"
+          - "server_upload_time"
+          - "source_id"
+          - "user_creation_time"
+        type: string
+        ignore: true
+        required: false
+
+  - name: amplitude_mob.devices
+    primary_key: [device_id]
+    on_conflict: DO NOTHING
+    fields:
+      - target: device_id
+        sources: ["device_id"]
+        type: string
+        required: true
+      - target: device_family
+        sources: ["device_family"]
+        type: string
+      - target: device_type
+        sources: ["device_type"]
+        type: string
+      - target: os_name
+        sources: ["os_name"]
+        type: string
+      - target: os_version
+        sources: ["os_version"]
+        type: string
+      - target: device_carrier
+        sources: ["device_carrier"]
+        type: string
+        null_values: ["", "N/A", "null", "Unknown"]
+      - target: dma
+        sources: ["dma", "dma:device_family"]
+        type: string
+      - target: platform
+        sources: ["platform"]
+        type: string
+      
+
+  - name: amplitude_mob.locations
+    primary_key: [uuid, event_time]
+    on_conflict: DO NOTHING
+    update_strategy: always
+    fields:
+      - target: uuid
+        sources: ["uuid"]
+        type: uuid
+        required: true
+      - target: event_time
+        sources: ["event_time"]
+        type: datetime
+        required: true
+      - target: city
+        sources: ["city"]
+        type: string
+      - target: country
+        sources: ["country"]
+        type: string
+      - target: ip_address
+        sources: ["ip_address"]
+        type: inet
+      - target: language
+        sources: ["language"]
+        type: string
+      - target: region
+        sources: ["region"]
+        type: string
+      - target: location_lat
+        sources: ["location_lat"]
+        type: float
+      - target: location_lng
+        sources: ["location_lng"]
+        type: float
+
+  - name: amplitude_mob.event_properties
+    primary_key: [uuid, event_time]
+    on_conflict: DO NOTHING
+    update_strategy: always
+    fields:
+      - target: uuid
+        sources: ["uuid"]
+        type: uuid
+        required: true
+      - target: event_time
+        sources: ["event_time"]
+        type: datetime
+        required: true
+      - target: event_properties
+        sources: ["event_properties", "properties"]
+        type: json
+        required: true
+
+  - name: amplitude_mob.users
+    primary_key: [uuid, event_time]
+    on_conflict: DO NOTHING
+    update_strategy: always
+    fields:
+      - target: uuid
+        sources: ["uuid"]
+        type: uuid
+        required: true
+      - target: event_time
+        sources: ["event_time"]
+        type: datetime
+        required: true
+      - target: start_version
+        sources: ["start_version"]
+        type: string
+      - target: is_authorized
+        sources: ["user_properties.authorization_status", "user_properties.Authorized"]
+        type: boolean
+        value_map:
+          "true": true
+          "True": true
+          "1": true
+          "authorized": true
+          "false": false
+          "False": false
+          "0": false
+          "unauthorized": false
+        null_values: ["unknown", ""]
+      - target: ehr_count
+        sources: [user_properties.Ehr Count, "user_properties.EHR_count"]
+        type: integer
+        null_values: ["", "N/A", "null", "-1"]
+      - target: ehr_id
+        sources: ["user_properties.EHR_ID", "user_id"]
+        type: integer
+        null_values: ["", "N/A", "no_ehr", "no ehr", "null", "-1", "Unauthorized*", "None"]
+      - target: source
+        sources: ["user_properties.source"]
+        type: string
+        max_length: 7
+      - target: registered_via_app
+        sources: ["user_properties.registered_via_app"]
+        type: boolean
+        value_map:
+          "true": true
+          "True": true
+          "1": true
+          "via app": true
+          "false": false
+          "False": false
+          "0": false
+        null_values: ["unknown", ""]
+      - target: gender
+        sources: ["user_properties.gender", "user_properties.Gender"]
+        type: string  
+        value_map:
+          "male": "male"
+          "MALE": "male"
+          "Male": "male"
+          "female": "female"
+          "FEMALE": "female"
+          "Female": "female"
+        null_values: ["unknown", "N/A" ,""]
+      - target: app_city
+        sources: ["user_properties.app_city"]
+        type: string
+        value_map:
+          "Санкт-Петербург": "Санкт-Петербург"
+          "SPB": "Санкт-Петербург"
+          "Казань": "Казань"
+          "KZN": "Казань"
+        null_values: ["unknown", "N/A", ""]
+      - target: age
+        sources: ["user_properties.age", "user_properties.Age"]
+        type: string
+        null_values: ["", "N/A", "null", "-1"]
+      - target: appointments_booked
+        sources: ["user_properties.appointments_booked"]
+        type: integer
+        default: 0
+      - target: appointments_cancelled
+        sources: ["user_properties.appointments_cancelled"]
+        type: integer
+        default: 0
+      - target: cohort_day
+        sources: ["user_properties.cohort_day"]
+        type: integer
+      - target: cohort_month
+        sources: ["user_properties.cohort_month"]
+        type: integer
+      - target: cohort_week
+        sources: ["user_properties.cohort_week"]
+        type: integer
+      - target: push_permission
+        sources: ["user_properties.push_permission", "user_properties.Notifications state"]
+        type: boolean
+        value_map:
+          "granted": true
+          "Enabled": true
+          "not_granted": false
+          "Disabled": false
+        null_values: ["unknown"]
+      - target: location_permission
+        sources: ["user_properties.location_permission"]
+        type: boolean
+        value_map:
+          "granted": true
+          "Enabled": true
+          "not_granted": false
+          "Disabled": false
+        null_values: ["unknown"]
+      - target: telemed_consultations_resumed
+        sources: ["user_properties.telemed_consultations_resumed"]
+        type: integer
+      - target: telemed_messages_sent
+        sources: ["user_properties.telemed_messages_sent"]
+        type: integer
+      - target: telemed_messages_received
+        sources: ["user_properties.telemed_messages_received"]
+        type: integer
+      - target: telemed_files_received
+        sources: ["user_properties.telemed_files_received"]
+        type: integer
+      - target: telemed_files_sent
+        sources: ["user_properties.telemed_files_sent"]
+        type: integer
+      - target: referral_second_appointment_amount
+        sources: ["user_properties.referral_second_appointment_amount"]
+        type: integer
+      - target: referral_appointment_amount
+        sources: ["user_properties.referral_appointment_amount"]
+        type: integer
+      - target: referral_vaccination_amount
+        sources: ["user_properties.referral_vaccination_amount"]
+        type: integer
+      - target: referral_operation_amount
+        sources: ["user_properties.referral_operation_amount"]
+        type: integer
+      - target: referral_amount
+        sources: ["user_properties.referral_amount"]
+        type: integer
+      - target: referral_exam_amount
+        sources: ["user_properties.referral_exam_amount"]
+        type: integer
+      - target: referral_medical_test_amount
+        sources: ["user_properties.referral_medical_test_amount"]
+        type: integer
+      - target: has_out_of_reference_lab_results
+        sources: ["user_properties.has_out_of_reference_lab_results"]
+        type: boolean
+        value_map:
+          "true": true
+          "True": true
+          "1": true
+          "false": false
+          "False": false
+          "0": false
+          "": null
+      - target: is_lk
+        sources: ["user_properties.isLk", "user_properties.is_lk"]
+        type: boolean
+        value_map:
+          "true": true
+          "True": true
+          "1": true
+          "false": false
+          "False": false
+          "0": false
+      - target: google_pay_available
+        sources: ["user_properties.google_pay_available"]
+        type: boolean
+        value_map:
+          "true": true
+          "True": true
+          "1": true
+          "available": true
+          "false": false
+          "False": false
+          "0": false
+          "not available": false
+        null_values: ["unknown", ""]

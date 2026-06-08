@@ -31,8 +31,14 @@ def apply_value_map(value: Any, mapping: Dict[str, Any], null_values: List[str])
     if value is None:
         return None
     str_val = str(value)
-    if str_val in null_values:
-        return None
+    for nv in null_values:
+        if nv.endswith('*'):
+            # маска-префикс: всё, что начинается с nv[:-1], считается null
+            if str_val.startswith(nv[:-1]):
+                return None
+        else:
+            if str_val == nv:
+                return None
     if mapping and str_val in mapping:
         return mapping[str_val]
     return value
