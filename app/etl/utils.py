@@ -32,7 +32,7 @@ def apply_value_map(value: Any, mapping: Dict[str, Any], null_values: List[str])
         return None
     str_val = str(value)
     for nv in null_values:
-        if nv.endswith('*'):
+        if nv.endswith("*"):
             # маска-префикс: всё, что начинается с nv[:-1], считается null
             if str_val.startswith(nv[:-1]):
                 return None
@@ -90,6 +90,11 @@ def convert_type(
         elif target_type == "inet":
             ip = ipaddress.ip_address(value)
             return str(ip) + "/32" if ip.version == 4 else str(ip)
+            cleaned = str(value).strip()
+            if cleaned.startswith("[") and cleaned.endswith("]"):
+                cleaned = cleaned[1:-1]
+            ip = ipaddress.ip_address(cleaned)
+            return str(ip)
         elif target_type == "uuid":
             return str(UUID(value))
     except Exception:

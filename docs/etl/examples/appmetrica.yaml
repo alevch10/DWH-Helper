@@ -1,8 +1,8 @@
 source:
   type: appmetrica
-  application_id: 213
-  date_since: "2026-05-01"
-  date_until: "2026-05-07"
+  application_id: 111
+  date_since: "2026-03-18"
+  date_until: "2026-07-06"
   export_format: csv
   fields:
     - profile_id
@@ -36,14 +36,20 @@ source:
     - session_id
     - windows_aid
   chunk_days: 7
+  generate_uuid: true
 
 tables:
   # --------------------------------------------------------------------------
   # events – основная информация
   # --------------------------------------------------------------------------
   - name: appmetrica.events
+    primary_key: [uuid]
+    on_conflict: DO NOTHING
     batch_size: 5000
     fields:
+      - target: uuid
+        sources: [ "__uuid__" ]
+        type: uuid
       - target: profile_id
         sources: ["profile_id"]
         type: integer
@@ -82,8 +88,13 @@ tables:
   # event_params – JSON-параметры
   # --------------------------------------------------------------------------
   - name: appmetrica.event_params
+    primary_key: [uuid]
+    on_conflict: DO NOTHING
     batch_size: 5000
     fields:
+      - target: uuid
+        sources: [ "__uuid__" ]
+        type: uuid
       - target: profile_id
         sources: ["profile_id"]
         type: integer
@@ -104,8 +115,13 @@ tables:
   # devices – характеристики устройства и сети
   # --------------------------------------------------------------------------
   - name: appmetrica.devices
+    primary_key: [uuid]
+    on_conflict: DO NOTHING
     batch_size: 5000
     fields:
+      - target: uuid
+        sources: [ "__uuid__" ]
+        type: uuid
       - target: profile_id
         sources: ["profile_id"]
         type: integer
@@ -165,8 +181,13 @@ tables:
   # location – страна и город
   # --------------------------------------------------------------------------
   - name: appmetrica.location
+    primary_key: [uuid]
+    on_conflict: DO NOTHING
     batch_size: 5000
     fields:
+      - target: uuid
+        sources: [ "__uuid__" ]
+        type: uuid
       - target: profile_id
         sources: ["profile_id"]
         type: integer

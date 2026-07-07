@@ -340,3 +340,67 @@ class GetChangeableUserPropertiesResponse(BaseModel):
 
     rows: List[ChangeableUserProperties]
     count: int
+
+
+# Amplitude Mob
+class AmplitudeMobEvent(BaseModel):
+    uuid: UUID
+    event_time: datetime
+    session_id: int
+    user_id: Optional[int]
+    event_type: str
+    event_id: int
+    device_id: str
+    version_name: Optional[str]
+
+
+class AmplitudeMobDevice(BaseModel):
+    device_id: str
+    device_family: Optional[str]
+    device_type: Optional[str]
+    os_name: Optional[str]
+    os_version: Optional[str]
+    device_carrier: Optional[str]
+    dma: Optional[str]
+    platform: Optional[str]
+
+
+class AmplitudeMobLocation(BaseModel):
+    uuid: UUID
+    event_time: datetime
+    city: Optional[str]
+    country: Optional[str]
+    ip_address: Optional[str]  # или IPvAnyAddress
+    language: Optional[str]
+    region: Optional[str]
+    location_lat: Optional[float]
+    location_lng: Optional[float]
+
+
+class AmplitudeMobEventProperty(BaseModel):
+    uuid: UUID
+    event_time: datetime
+    event_properties: Optional[Dict]
+
+
+class AmplitudeMobUser(BaseModel):
+    uuid: UUID
+    event_time: datetime
+    start_version: Optional[str]
+    is_authorized: Optional[bool]
+    ehr_count: Optional[int]
+    ehr_id: Optional[int]
+    source: Optional[str]
+    registered_via_app: Optional[bool]
+    gender: Optional[str]
+    app_city: Optional[str]
+    age: Optional[str]  # теперь строка
+    appointments_booked: Optional[int]
+    appointments_cancelled: Optional[int]
+    cohort_day: Optional[int]
+    cohort_month: Optional[int]
+    cohort_week: Optional[int]
+    push_permission: Optional[bool]
+    location_permission: Optional[bool]
+    telemed_consultations_resumed: Optional[int]
+    # ... и остальные telemed/referral поля, перечислите все, что есть в таблице

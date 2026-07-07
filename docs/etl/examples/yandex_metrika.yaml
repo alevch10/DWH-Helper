@@ -87,6 +87,9 @@ tables:
   # events
   # --------------------------------------------------------------------------
   - name: yandex_metrika.events
+  - name: yandex_metrika_booking.events
+    primary_key: [watch_id, date_time]
+    on_conflict: DO NOTHING
     batch_size: 5000
     fields:
       - target: watch_id
@@ -148,6 +151,9 @@ tables:
   # event_params
   # --------------------------------------------------------------------------
   - name: yandex_metrika.event_params
+  - name: yandex_metrika_booking.event_params
+    primary_key: [watch_id, date_time]
+    on_conflict: DO NOTHING
     batch_size: 5000
     fields:
       - target: watch_id
@@ -173,6 +179,9 @@ tables:
   # marketing_info
   # --------------------------------------------------------------------------
   - name: yandex_metrika.marketing_info
+  - name: yandex_metrika_booking.marketing_info
+    primary_key: [watch_id, date_time]
+    on_conflict: DO NOTHING
     batch_size: 5000
     fields:
       - target: watch_id
@@ -234,6 +243,9 @@ tables:
   # devices
   # --------------------------------------------------------------------------
   - name: yandex_metrika.devices
+  - name: yandex_metrika_booking.devices
+    primary_key: [watch_id, date_time]
+    on_conflict: DO NOTHING
     batch_size: 5000
     fields:
       - target: watch_id
@@ -337,6 +349,9 @@ tables:
   # location
   # --------------------------------------------------------------------------
   - name: yandex_metrika.location
+  - name: yandex_metrika_booking.location
+    primary_key: [watch_id, date_time]
+    on_conflict: DO NOTHING
     batch_size: 5000
     fields:
       - target: watch_id
@@ -368,6 +383,9 @@ tables:
   # offline_calls
   # --------------------------------------------------------------------------
   - name: yandex_metrika.offline_calls
+  - name: yandex_metrika_booking.offline_calls
+    primary_key: [watch_id, date_time]
+    on_conflict: DO NOTHING
     batch_size: 5000
     fields:
       - target: watch_id

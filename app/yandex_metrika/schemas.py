@@ -243,7 +243,7 @@ class MetrikaHitRow(BaseModel):
     )
 
     ip_address: Optional[str] = Field(None, alias="ipAddress", max_length=24)
-    region_city: Optional[str] = Field(None, alias="regionCity", max_length=26)
+    region_city: Optional[str] = Field(None, alias="regionCity", max_length=28)
     region_country: Optional[str] = Field(None, alias="regionCountry", max_length=63)
 
     is_page_view: Optional[bool] = Field(None, alias="isPageView")

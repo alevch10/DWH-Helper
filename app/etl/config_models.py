@@ -50,6 +50,7 @@ class SourceAppMetricaConfig(BaseModel):
     chunk_days: int = Field(
         default=7, ge=1, description="Размер интервала в днях для разбиения периода"
     )
+    generate_uuid: bool = False
 
 
 SourceConfig = Union[SourceS3Config, SourceYandexMetrikaConfig, SourceAppMetricaConfig]

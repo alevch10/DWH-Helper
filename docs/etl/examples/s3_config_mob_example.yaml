@@ -1,7 +1,7 @@
 source:
   type: s3
   bucket: ef0075029599-amplitudedata/
-  prefix: tmp/
+  prefix: mobile/
   sort:
     by: key
     natural: true
@@ -25,7 +25,8 @@ tables:
       - target: session_id
         sources: ["session_id"]
         type: integer
-        required: true
+        required: false
+        null_values: ["", "N/A", "-1"]
       - target: user_id
         sources: ["user_id"]
         type: integer
@@ -83,6 +84,65 @@ tables:
           - "server_upload_time"
           - "source_id"
           - "user_creation_time"
+          # из таблицы devices
+          - "device_family"
+          - "device_type"
+          - "os_name"
+          - "os_version"
+          - "device_carrier"
+          - "dma"
+          - "dma:device_family"
+          - "platform"
+          # из таблицы locations
+          - "city"
+          - "country"
+          - "ip_address"
+          - "language"
+          - "region"
+          - "location_lat"
+          - "location_lng"
+          # из таблицы event_properties
+          - "event_properties"
+          - "properties"
+          # из таблицы users (все user_properties.*)
+          - "start_version"
+          - "user_properties.authorization_status"
+          - "user_properties.Authorized"
+          - "user_properties.EHR_count"
+          - "user_properties.EHR_ID"
+          - "user_properties.source"
+          - "user_properties.registered_via_app"
+          - "user_properties.gender"
+          - "user_properties.Gender"
+          - "user_properties.app_city"
+          - "user_properties.age"
+          - "user_properties.Age"
+          - "user_properties.appointments_booked"
+          - "user_properties.appointments_cancelled"
+          - "user_properties.cohort_day"
+          - "user_properties.cohort_month"
+          - "user_properties.cohort_week"
+          - "user_properties.push_permission"
+          - "user_properties.Notifications state"
+          - "user_properties.location_permission"
+          - "user_properties.telemed_consultations_resumed"
+          - "user_properties.telemed_messages_sent"
+          - "user_properties.telemed_messages_received"
+          - "user_properties.telemed_files_received"
+          - "user_properties.telemed_files_sent"
+          - "user_properties.referral_second_appointment_amount"
+          - "user_properties.referral_appointment_amount"
+          - "user_properties.referral_vaccination_amount"
+          - "user_properties.referral_operation_amount"
+          - "user_properties.referral_amount"
+          - "user_properties.referral_exam_amount"
+          - "user_properties.referral_medical_test_amount"
+          - "user_properties.has_out_of_reference_lab_results"
+          - "user_properties.isLk"
+          - "user_properties.is_lk"
+          - "user_properties.google_pay_available"
+          # отдельные поля, которые не через user_properties
+          - "Ehr Count"
         type: string
         ignore: true
         required: false
@@ -92,7 +152,7 @@ tables:
     on_conflict: DO NOTHING
     fields:
       - target: device_id
-        sources: ["device_id"]
+        sources: [""]
         type: string
         required: true
       - target: device_family
@@ -154,23 +214,21 @@ tables:
         sources: ["location_lng"]
         type: float
 
-  - name: amplitude_mob.event_properties
-    primary_key: [uuid, event_time]
-    on_conflict: DO NOTHING
-    update_strategy: always
+  - name: xxx.event_properties
     fields:
       - target: uuid
         sources: ["uuid"]
         type: uuid
-        required: true
+        required: false
       - target: event_time
         sources: ["event_time"]
         type: datetime
-        required: true
+        required: false
       - target: event_properties
         sources: ["event_properties", "properties"]
         type: json
-        required: true
+        required: false
+        ignore: true
 
   - name: amplitude_mob.users
     primary_key: [uuid, event_time]

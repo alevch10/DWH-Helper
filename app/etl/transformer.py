@@ -3,6 +3,7 @@ import csv
 import io
 import json
 import zipfile
+from uuid import uuid4
 from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -518,6 +519,8 @@ async def _process_appmetrica_async(
     repo = get_repository()
 
     normalized_requested = set(fields_list)
+    if source_cfg.generate_uuid:
+        normalized_requested.add("__uuid__")
 
     all_known_paths = set()
     jsonb_source_prefixes = set()
@@ -596,6 +599,8 @@ async def _process_appmetrica_async(
         try:
             for record in events:
                 logger.debug("Record keys: %s", list(record.keys()))
+                if source_cfg.generate_uuid:
+                    record["__uuid__"] = str(uuid4())
 
                 unknown = set(record.keys()) - normalized_requested
                 if unknown:
