@@ -5,6 +5,9 @@ import csv
 from datetime import datetime
 from typing import Any, Optional, List, Dict, Iterable
 from uuid import UUID
+from app.config.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def natural_sort_key(s: str) -> List[str]:
@@ -57,6 +60,11 @@ def convert_type(
         elif target_type == "float":
             return float(value)
         elif target_type == "boolean":
+            if isinstance(value, str):
+                if value.lower() == "true":
+                    return True
+                if value.lower() == "false":
+                    return False
             return bool(value)
         elif target_type == "datetime":
             if isinstance(value, datetime):
@@ -76,25 +84,33 @@ def convert_type(
             return datetime.strptime(value_str, "%Y-%m-%d %H:%M:%S")
 
         elif target_type == "json":
-            # Преобразуем dict или list в JSON-строку
             if isinstance(value, (dict, list)):
                 return json.dumps(value, ensure_ascii=False)
             elif isinstance(value, str):
-                return value
+                try:
+                    json.loads(value)
+                    return value
+                except json.JSONDecodeError:
+                    fixed = value.replace('\\"', '"')
+                    try:
+                        json.loads(fixed)
+                        logger.debug("Fixed double-escaped JSON string")
+                        return fixed
+                    except json.JSONDecodeError:
+                        logger.warning("Could not parse JSON even after fixing double escapes: %s", value[:200])
+                        return fixed
             else:
-                return str(value)
+                return str(value)           
         elif target_type == "array":
             if not isinstance(value, list):
                 return [value]
             return value
         elif target_type == "inet":
-            ip = ipaddress.ip_address(value)
-            return str(ip) + "/32" if ip.version == 4 else str(ip)
             cleaned = str(value).strip()
-            if cleaned.startswith("[") and cleaned.endswith("]"):
+            if cleaned.startswith('[') and cleaned.endswith(']'):
                 cleaned = cleaned[1:-1]
             ip = ipaddress.ip_address(cleaned)
-            return str(ip)
+            return str(ip) + "/32" if ip.version == 4 else str(ip)
         elif target_type == "uuid":
             return str(UUID(value))
     except Exception:
