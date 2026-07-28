@@ -150,7 +150,7 @@ class MetrikaHitRow(BaseModel):
 
     goals_id: ListLike = Field(None, alias="goalsID")
     url: Optional[str] = Field(None, alias="URL", max_length=2048)
-    referer: Optional[str] = Field(None, alias="referer", max_length=2278)
+    referer: Optional[str] = Field(None, alias="referer", max_length=3000)
 
     utm_campaign: Optional[str] = Field(None, alias="UTMCampaign")
     utm_content: Optional[str] = Field(None, alias="UTMContent", max_length=512)
